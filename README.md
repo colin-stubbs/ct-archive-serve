@@ -44,6 +44,8 @@ CI/CD and artifacts:
 
 You can operate `ct-archive-serve` entirely via containers. The server expects an archive directory on disk containing `ct_*` folders with `000.zip`, `001.zip`, etc.
 
+If a zip part exists but fails basic zip integrity checks (common while a torrent download is still in progress), `ct-archive-serve` returns HTTP `503` for requests that require that zip part. Failed zip parts are re-tried after `CT_ZIP_INTEGRITY_FAIL_TTL` (default `5m`).
+
 ### docker run
 
 - Ensure your archive is available on the host, e.g. `./archive/ct_example_log/000.zip`

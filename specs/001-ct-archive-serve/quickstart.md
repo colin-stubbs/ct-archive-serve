@@ -12,6 +12,8 @@
   - Maximum number of simultaneously-open zip parts across all logs (bounded cache for extreme-load performance).
 - `CT_ARCHIVE_REFRESH_INTERVAL` (default: `1m`)
   - How frequently to refresh the on-disk archive folder/zip-part index (must not run on the request hot path).
+- `CT_ZIP_INTEGRITY_FAIL_TTL` (default: `5m`)
+  - How long to cache a zip part integrity failure before re-testing it. When a required zip part exists but fails basic zip integrity checks (often because a torrent download is still in progress), requests return HTTP `503` until the zip passes integrity checks.
 - `CT_HTTP_READ_HEADER_TIMEOUT` (default: `5s`)
   - Maximum time to read request headers (slowloris protection).
 - `CT_HTTP_IDLE_TIMEOUT` (default: `60s`)
@@ -46,6 +48,8 @@
 
 All runtime behavior is configured via environment variables; CLI flags are limited to help output and logging verbosity/debug (`-h/-v/-d`).
 
+When serving from torrent-downloaded archives, zip parts may be present but incomplete. If a required zip part fails basic zip integrity checks, `ct-archive-serve` returns HTTP `503` (temporarily unavailable) and will re-test that zip part after `CT_ZIP_INTEGRITY_FAIL_TTL` (default `5m`).
+
 `GET /monitor.json` URL formation derives `<publicBaseURL>` from the incoming request headers. `X-Forwarded-Host`/`X-Forwarded-Proto` are only honored when the request source IP matches `CT_HTTP_TRUSTED_SOURCES`; otherwise they are logged but ignored. In production, run `ct-archive-serve` behind a reverse proxy that performs TLS termination and rate limiting and forwards the appropriate `X-Forwarded-*` headers from a trusted source IP/CIDR.
 
 ```bash
@@ -54,6 +58,7 @@ CT_ARCHIVE_FOLDER_PATTERN='ct_*' \
 CT_MONITOR_JSON_REFRESH_INTERVAL='5m' \
 CT_ZIP_CACHE_MAX_OPEN='256' \
 CT_ARCHIVE_REFRESH_INTERVAL='1m' \
+CT_ZIP_INTEGRITY_FAIL_TTL='5m' \
 CT_HTTP_READ_HEADER_TIMEOUT='5s' \
 CT_HTTP_IDLE_TIMEOUT='60s' \
 CT_HTTP_MAX_HEADER_BYTES='8192' \

@@ -7,8 +7,8 @@
 - `checkpoint`
 - `log.v3.json`
 - `issuer/<sha256hex>`
-- `tile/<L>/<N>[.p/<W>]`
-- `tile/data/<N>[.p/<W>]`
+- `tile/<L>/<N>[.p/<W>]` (where `<N>` uses tlog "groups-of-three" decimal path encoding and may span multiple path segments)
+- `tile/data/<N>[.p/<W>]` (where `<N>` uses tlog "groups-of-three" decimal path encoding and may span multiple path segments)
 
 The archiver splits a log into subtree zip files. Each zip contains one level-2 tile (and everything below it), plus shared metadata (checkpoint/log info/issuers/high-level tiles).
 
@@ -27,6 +27,15 @@ In Go, the standard-library `archive/zip` package is designed for this pattern:
 - `zip.OpenReader(path)` opens the file and uses `io.ReaderAt` internally.
 - The reader uses the zip central directory at the end of the file to map entry names → offsets.
 - `(*zip.File).Open()` seeks to the entry data offset and streams decompression for that entry only.
+
+## Zip integrity verification during torrent downloads
+
+Because archive zip parts may be **present but incomplete** while a torrent client is still downloading, `ct-archive-serve` treats zip integrity as a structural validity problem (not content verification):
+
+- Open the zip with `zip.OpenReader(path)` to parse the end-of-central-directory record and the central directory.
+- Then iterate `r.File` and call `Open()` + immediately `Close()` each file to force validation of each local file header and offset metadata **without reading the entry payload**.
+
+This approach is fast relative to full extraction/decompression, and it detects truncated/cut-off zips reliably. Results are cached per `spec.md` `FR-013` (passed set kept for process lifetime; failed set expires after `CT_ZIP_INTEGRITY_FAIL_TTL` so the server can retry once a download completes).
 
 ## Zip selection for tile requests
 

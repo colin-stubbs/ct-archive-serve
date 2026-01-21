@@ -1,6 +1,6 @@
 # Implementation Plan: ct-archive-serve (Static CT archive HTTP server)
 
-**Branch**: `001-ct-archive-serve` | **Date**: 2026-01-20 | **Spec**: `specs/001-ct-archive-serve/spec.md`
+**Branch**: `001-ct-archive-serve` | **Date**: 2026-01-21 | **Spec**: `specs/001-ct-archive-serve/spec.md`
 **Input**: Feature specification from `specs/001-ct-archive-serve/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
@@ -27,12 +27,17 @@ Implement `ct-archive-serve`, a native `net/http` server that serves Static-CT m
 - Must be implemented independently in this repository (no reuse of internal codebases as a dependency; stdlib preferred; upstream CT libraries allowed)
 - Must support multiple archived logs under a top-level archive directory
 - Must open and serve zip entries via seekable/random-access reads (avoid whole-zip decompression)
+- Must enforce HTTP method policy per `spec.md` `FR-002a` (support `GET`+`HEAD`; other methods to supported routes return `405` with `Allow: GET, HEAD`)
+- Must return `503` (temporarily unavailable) when a required zip part exists but fails basic zip integrity checks, with cached pass/fail results and a failed TTL per `spec.md` `FR-013`
 **Scale/Scope**: 10s–100s of archives; archives may contain 1–1000 zip parts per log
 
 ## Implementation Notes
 
 - Zip entry serving will use Go standard library `archive/zip` with `zip.OpenReader` (or `zip.NewReader` over an `io.ReaderAt`) to ensure random-access reads via the central directory and streaming decompression of only the requested entry.
 - `/monitor.json` URL formation will derive the “public base URL” from the incoming request headers (`Host`, and `X-Forwarded-Host`/`X-Forwarded-Proto` when present) so the server does not need (and does not validate) a configured hostname/transport.
+- `/monitor.json` output must be deterministic: `tiled_logs` should be sorted by `<log>` ascending per `spec.md` `FR-006`.
+- Tile index `<N>` parsing must follow the tlog "groups-of-three" decimal path encoding per `spec.md` `FR-008a` (so `<N>` may span multiple path segments).
+- Zip integrity handling for torrent-downloaded archives will use a **structural validity check** (no decompression): open the zip with `zip.OpenReader` (central directory/EOCD) and then iterate entries and `Open()`/`Close()` each one to validate local file headers/offsets. Results are cached per `spec.md` `FR-013`; zip parts that fail integrity checks cause request handlers to return `503` until a re-check succeeds.
 
 ## Performance Architecture (Extreme Load)
 
@@ -49,6 +54,7 @@ Implement `ct-archive-serve`, a native `net/http` server that serves Static-CT m
 - **ArchiveIndex**: in-memory index mapping `<log>` → archive folder path + known zip parts, refreshed periodically (`CT_ARCHIVE_REFRESH_INTERVAL`).
 - **ZipPartCache**: bounded cache (config: `CT_ZIP_CACHE_MAX_OPEN`) that retains open file handles and a prebuilt entry index for each zip part.
 - **ZipEntryIndex**: map-like structure created from the zip central directory (entry name → `*zip.File`/metadata) to make per-request lookup O(1) for an already-cached zip part.
+- **ZipIntegrityCache**: in-memory zip integrity results used to tolerate in-progress torrent downloads: a permanent "passed" set and a TTL "failed" set (`CT_ZIP_INTEGRITY_FAIL_TTL`, default 5m). When a required zip part fails integrity checks, requests return `503` (temporarily unavailable) per `spec.md` (`FR-013`).
 
 ### Request hot path (intended)
 
@@ -96,10 +102,13 @@ cmd/
 internal/
 └── ct-archive-serve/
     ├── config.go
+    ├── logger.go
+    ├── metrics.go
     ├── server.go
     ├── routing.go
     ├── archive_index.go
     ├── monitor_json.go
+    ├── zip_cache.go
     ├── zip_reader.go
     └── *_test.go
 ```

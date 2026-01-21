@@ -22,6 +22,7 @@
 - Q: How is ct-archive-serve built and distributed? → A: The project is built in public on GitHub; GitHub Actions CI pipelines are used to validate/test/build; successful builds publish a container image to GitHub Container Registry (GHCR).
 - Q: What operational “quick run” artifact must be provided for container usage? → A: The repo MUST include a `compose.yml` that demonstrates running `ct-archive-serve` via `docker compose` or `podman compose`; `README.md` MUST document container-based operation.
 - Q: What are the container runtime defaults? → A: The container MUST run as `nobody/nogroup` and listen on TCP/8080 by default. Operators MAY publish host TCP/80 to container TCP/8080 (e.g. `-p 80:8080`).
+- Q: What data integrity verification is required when serving from torrent-downloaded zip parts? → A: `ct-archive-serve` only verifies `.zip` integrity (not Merkle/inclusion proofs). If a required zip part fails basic zip integrity checks (often because it is still downloading), the request MUST return HTTP `503` (temporarily unavailable). The server MUST cache zip integrity results in-memory: a permanent “passed” set (until read failures evict entries) and a “failed” set with TTL (default 5 minutes) before re-testing.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -73,6 +74,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
 - **Invalid paths**: Requests containing `..` or other traversal attempts MUST NOT escape the archive namespace (respond `404`).
 - **Invalid tile encoding**: Requests with invalid `<L>`, invalid tile-index encoding, or invalid partial width MUST respond `404`. For `.p/<W>` requests, `<W>` MUST be an integer in the inclusive range 1..255 (full tiles use the non-`.p/` form).
 - **Missing archive zips**: If the archive directory is missing required zip(s) for a given request, the server MUST respond `404`.
+- **Zip part temporarily unavailable**: If the required zip part exists on disk but fails basic zip integrity checks (e.g., because it is still downloading), the server MUST respond `503` for requests that require that zip part (see `FR-013`).
 - **Right-edge partial tiles**: For requests that include `.p/<W>`, `ct-archive-serve` MUST treat the path as a **literal archive entry path** and MUST NOT attempt to synthesize or rewrite tiles based on checkpoint tree size. The server returns `200` if and only if the corresponding zip entry exists; otherwise `404` (consistent with missing content).
 
 ## Requirements *(mandatory)*
@@ -95,6 +97,11 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
   - any `/checkpoint` response as `text/plain; charset=utf-8`
   - any tile response as `application/octet-stream`
   - any issuer response as `application/pkix-cert`
+- **FR-002a**: HTTP method policy:
+  - For all supported endpoints, `ct-archive-serve` MUST support `GET` and `HEAD`.
+  - For `HEAD`, the server MUST behave as for `GET` but MUST NOT include a response body.
+  - For any other HTTP method targeting a supported route, the server MUST respond `405` and include `Allow: GET, HEAD`.
+  - For unknown/unsupported routes, the server MUST respond `404` regardless of method.
 - **FR-003**: `ct-archive-serve` MUST support serving multiple archived CT logs from subfolders under `CT_ARCHIVE_PATH` (default: `/var/log/ct/archive`) filtered by `CT_ARCHIVE_FOLDER_PATTERN` (default: `ct_*`).
 - **FR-003a**: `ct-archive-serve` MUST derive the request `<log>` path segment from the discovered archive folder name by stripping a configured prefix. `CT_ARCHIVE_FOLDER_PATTERN` MUST be of the form `<prefix>*` (literal prefix followed by a single trailing `*`), and `ct-archive-serve` MUST strip exactly `<prefix>` from the folder name to produce `<log>`. If `CT_ARCHIVE_FOLDER_PATTERN` is not of the supported `<prefix>*` form, `ct-archive-serve` MUST fail startup with an invalid configuration error.
 - **FR-004**: `ct-archive-serve` MUST use environment variables to configure all aspects of operation, with documented defaults. Environment variables configure runtime behavior; CLI flags are limited to help output and logging verbosity/debug only.
@@ -121,6 +128,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
       - `email` = `[]`
       - `logs` = `[]`
       - `tiled_logs` populated from discovered archive folders (one entry per folder with a valid `000.zip` → `log.v3.json`)
+      - `tiled_logs` MUST be sorted deterministically by `<log>` in ascending ASCII lexicographic order (where `<log>` is derived from the archive folder name per `FR-003a`)
     - `log_list_timestamp` SHOULD be set to the time the current snapshot was generated/refreshed
 
   Example minimal shape (illustrative only; values are placeholders — fields within each `tiled_logs[]` entry are sourced from `log.v3.json` and then adjusted per requirements):
@@ -142,8 +150,8 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
             "mmd": 86400,
             "log_type": "prod",
             "state": {},
-            "submission_url": "https://ct.example/archive/example_log_2024",
-            "monitoring_url": "https://ct.example/archive/example_log_2024",
+            "submission_url": "https://ct.example/example_log_2024",
+            "monitoring_url": "https://ct.example/example_log_2024",
             "has_issuers": true
           }
         ]
@@ -165,11 +173,31 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
       - for level 1 tiles: `zipIndex = N / 256`
       - for level 2 tiles: `zipIndex = N`
   - For \(L \ge 3\), `photocamera-archiver` MAY include those tiles in every zip, so `ct-archive-serve` MUST serve them from a preferred “shared metadata” zip (prefer `000.zip` when present; otherwise the lowest available zip part).
+- **FR-008a**: Tile indices in request paths MUST use the standard tlog "groups-of-three" decimal encoding (to avoid huge single directories and to match common Static-CT clients):
+  - For both hash tiles and data tiles, `<N>` in the request path encodes a non-negative integer tile index \(N\) using one or more path segments.
+  - **Encoding**: Convert \(N\) to an unsigned decimal string, left-pad with `0` so the total length is a multiple of 3 digits, then split into 3-digit groups separated by `/`.
+    - Examples: \(N=0\) -> `000`; \(N=1\) -> `001`; \(N=1234\) -> `001/234`; \(N=1234567\) -> `001/234/567`
+  - **Full tile request forms**:
+    - Hash: `GET /<log>/tile/<L>/<N>` where `<N>` is the multi-segment groups-of-three path
+    - Data: `GET /<log>/tile/data/<N>` where `<N>` is the multi-segment groups-of-three path
+  - **Partial tile request forms**: The `.p/<W>` suffix applies to the final 3-digit `<N>` segment:
+    - Hash: `GET /<log>/tile/<L>/<N>.p/<W>`
+    - Data: `GET /<log>/tile/data/<N>.p/<W>`
+  - **Decoding/validation**: Each `<N>` path segment MUST be exactly 3 ASCII digits (`0-9`). Any other form MUST be rejected as invalid and return `404` (see Edge Cases).
 - **FR-009**: `ct-archive-serve` MUST return `404` for missing entries and invalid paths, and MUST NOT allow path traversal.
+- **FR-009a**: For requests that require reading a specific zip part, if that zip part exists but fails basic zip integrity checks, `ct-archive-serve` MUST return `503` (temporarily unavailable) rather than `404` (see `FR-013`).
 - **FR-010**: `ct-archive-serve` SHOULD be compatible with Static-CT (C2SP/tiled) client implementations when configured with the server as their monitoring prefix.
 - **FR-011**: `ct-archive-serve` MUST provide environment variables to tune high-load performance (bounded resource usage), including:
   - `CT_ZIP_CACHE_MAX_OPEN` (default: `256`) — maximum number of simultaneously-open zip parts across all logs
   - `CT_ARCHIVE_REFRESH_INTERVAL` (default: `1m`) — how frequently to refresh the on-disk archive folder/zip-part index (must not run on the request hot path)
+- **FR-013**: Zip integrity verification and temporary unavailability handling:
+  - `ct-archive-serve` MUST treat archive zip parts as potentially incomplete (e.g., during torrent downloads) and MUST perform **basic zip integrity checks** before using a zip part to serve content.
+  - Basic zip integrity checks MUST be limited to establishing that the zip file is readable by Go's `archive/zip` (e.g., the central directory/EOCD can be parsed). The server MUST NOT attempt Merkle/inclusion verification as part of serving.
+  - If a request requires a zip part and that zip part fails basic zip integrity checks, the server MUST return HTTP `503` to indicate the requested content is temporarily unavailable.
+  - To avoid repeated integrity work, the server MUST maintain in-memory integrity caches:
+    - A **passed** set of zip parts that have passed integrity checks. Entries MUST be kept for the lifetime of the process and MUST only be removed if subsequent open/read attempts for that zip part fail (which MUST be handled gracefully).
+    - A **failed** set of zip parts that have failed integrity checks, with an expiry. Entries MUST expire after `CT_ZIP_INTEGRITY_FAIL_TTL` (default: `5m`) to allow re-testing once a download completes.
+  - `CT_ZIP_INTEGRITY_FAIL_TTL` MUST be configurable via environment variable. Invalid values MUST fail startup with an invalid configuration error.
 - **FR-012**: `ct-archive-serve` MUST configure the underlying `net/http` server with safe timeouts and header limits to prevent resource exhaustion under slow/abusive clients. These MUST be configurable via environment variables with documented defaults, including:
   - `CT_HTTP_READ_HEADER_TIMEOUT` (default: `5s`)
   - `CT_HTTP_IDLE_TIMEOUT` (default: `60s`)

@@ -13,7 +13,7 @@
 ## Requirement Completeness
 
 - [ ] CHK001 Are all **supported routes** enumerated in one place (including `/monitor.json`, `/metrics`, and every `/<log>/...` path) without omissions? [Completeness, Spec §FR-002]
-- [ ] CHK002 Are **HTTP methods** explicitly constrained (e.g., GET-only; behavior for HEAD/others) for every endpoint? [Gap]
+- [ ] CHK002 Are **HTTP methods** explicitly constrained (e.g., support GET+HEAD; 405 for others) for every endpoint? [Completeness, Spec §FR-002a]
 - [ ] CHK003 Are **response status codes** defined for all endpoints for (a) success, (b) missing content, and (c) invalid inputs? [Completeness, Spec §FR-009; Spec §Edge Cases]
 - [ ] CHK004 Are **Content-Type rules** specified for every served asset class (monitor list, checkpoint, tiles, issuer, JSON files)? [Completeness, Spec §FR-002]
 - [ ] CHK004a Are **HTTP server timeout/limit** knobs fully enumerated and justified for safety under slow/abusive clients (ReadHeaderTimeout, IdleTimeout, MaxHeaderBytes, etc.)? [Safety, Spec §FR-012]
@@ -46,13 +46,13 @@
 
 - [ ] CHK019 Are primary flows specified for each endpoint class: monitor list, checkpoint, log info, hash tiles, data tiles, issuer? [Coverage, Spec §FR-002; Spec §User Stories]
 - [ ] CHK020 Are alternate flows specified for **multiple logs** (ambiguity when `<log>` not found; behavior when multiple folders could map to same `<log>`)? [Gap, Spec §FR-003; Spec §FR-003a]
-- [ ] CHK021 Are error flows specified for “zip part exists but entry missing” vs “zip part missing” vs “entry unreadable/corrupt zip”? [Coverage, Gap]
+- [ ] CHK021 Are error flows specified for “zip part exists but entry missing” vs “zip part missing” vs “zip part present but fails integrity checks (503 temporarily unavailable; cached with TTL)” vs “entry unreadable/corrupt zip”? [Coverage, Spec §FR-013]
 - [ ] CHK022 Are recovery flows specified for `/monitor.json` refresh failures (serve last good snapshot vs empty vs error; log/metrics expectations)? [Gap, Spec §FR-006; Spec §FR-007]
 
 ## Edge Case Coverage
 
 - [ ] CHK023 Are path traversal rules comprehensive (encoding tricks, repeated slashes, leading dots, percent-encoding) or at least explicitly scoped? [Coverage, Spec §Edge Cases; Spec §NFR-002]
-- [ ] CHK024 Are tile parameter validity rules complete: allowed `<L>` range, tile index encoding rules, and allowed partial widths? [Completeness, Spec §Edge Cases]
+- [ ] CHK024 Are tile parameter validity rules complete: allowed `<L>` range, tile index encoding rules (tlog "groups-of-three" path encoding; `FR-008a`), and allowed partial widths? [Completeness, Spec §Edge Cases; Spec §FR-008a]
 - [ ] CHK025 Are “right-edge partial tile” semantics sufficiently defined to make 404 vs 200 deterministic without implementation guesswork (validate `.p/<W>` where `W` is 1..255; treat `.p/<W>` as a literal zip entry path; `200` iff entry exists, else `404`; no checkpoint-based synthesis)? [Clarity, Spec §Edge Cases]
 - [ ] CHK026 Is behavior defined for unknown suffixes/paths under `/<log>/...` (strict 404 vs fallback)? [Gap]
 
