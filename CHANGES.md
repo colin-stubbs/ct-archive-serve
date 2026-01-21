@@ -1,3 +1,9 @@
+* 2026-01-21 - Clean up constitution scope for ct-archive-serve
+
+- Updated `.specify/memory/constitution.md` to align “integrity verification” with `ct-archive-serve` (ZIP structural integrity checks only; Merkle/inclusion verification is out of scope for serving paths)
+- Made outbound network-call guidance conditional to avoid imposing CT-client retry/backoff requirements on a filesystem-backed HTTP server
+- Deleted legacy `.speckit.constitution` (unused by speckit commands and contained ctlogtools-specific placeholders/guidance)
+
 * 2026-01-21 - Regenerate implementation task list for ct-archive-serve
 
 - Rewrote `specs/001-ct-archive-serve/tasks.md` to be dependency-ordered by phase/user story, with strictly sequential task IDs and required `[P]`/`[US#]` labels

@@ -1,8 +1,8 @@
 <!--
 Sync Impact Report
 
-- Version change: 1.0.0 → 1.0.1
-- Modified principles: clarify reverse-proxy delegation for edge security controls (rate limiting/TLS) while retaining input validation and safe limits
+- Version change: 1.0.1 → 1.0.2
+- Modified principles: align integrity verification to ct-archive-serve’s role (ZIP structural integrity only), and make outbound-network-call guidance conditional while retaining reverse-proxy delegation for edge security controls
 - Added sections: Constraints & Standards; Development Workflow & Quality Gates
 - Removed sections: none
 - Templates requiring updates:
@@ -25,7 +25,9 @@ Rationale: This repository focuses on `ct-archive-serve`; clear boundaries keep 
 ### II. CT correctness is non-negotiable
 - Implementations MUST be correct with respect to Certificate Transparency specifications and operator behavior
   (RFC 6962 + Static CT/tiled logs).
-- Data integrity MUST be verified where feasible (e.g., Merkle verification, inclusion proof validation).
+- Data integrity MUST be verified where feasible **within the service’s role and inputs**.
+  - For `ct-archive-serve`, integrity verification is limited to **ZIP structural validity checks** (central directory + local headers) for zip parts being accessed, with pass/fail caching and temporary-unavailability behavior defined by the spec.
+  - Merkle/inclusion verification is **out of scope** for `ct-archive-serve` serving paths and is the responsibility of downstream CT clients.
 - Wire formats and responses MUST be deterministic and precisely specified (especially where other tooling depends
   on them).
 - When a behavior is ambiguous in upstream ecosystems, we MUST document the chosen contract and test it.
@@ -42,8 +44,7 @@ Rationale: This project interacts with hostile/variable inputs and large dataset
 
 ### IV. Observability and operational safety by default
 - Long-running processes MUST expose actionable metrics (Prometheus) and structured logs with clear error context.
-- External calls MUST have timeouts, retries with backoff, and clear error classification; circuit breakers/rate
-  limiting MUST be used where appropriate.
+- If the service makes outbound network calls, they MUST have timeouts, retries with backoff, and clear error classification.
 - Resource usage MUST be bounded and observable (memory, goroutine count, queue depth, open files/db handles).
 
 Rationale: CT workloads are continuous and spiky; safe defaults and visibility are required for production ops.
@@ -69,7 +70,7 @@ Rationale: The system sits on the network boundary and processes untrusted data 
 ## Constraints & Standards
 
 - **Supported runtime**: Go 1.25.5+ (align with tooling and CI).
-- **External calls**: Every network request MUST have a timeout; retries MUST use exponential backoff and jitter.
+- **External calls**: If the service makes outbound network calls, every request MUST have a timeout; retries (if used) MUST use exponential backoff and jitter.
 - **Configuration**: Environment variables are the primary configuration mechanism; flags are reserved for UX/help
   and non-secret toggles unless explicitly documented otherwise.
 - **Storage**: Data layout and on-disk formats MUST remain backwards compatible unless a migration plan is
@@ -104,4 +105,4 @@ Rationale: The system sits on the network boundary and processes untrusted data 
   - PR reviews MUST check changes against these principles.
   - For implementation guidance, also refer to `AGENTS.md` and `docs/ARCHITECTURE.md`.
 
-**Version**: 1.0.1 | **Ratified**: 2025-09-18 | **Last Amended**: 2026-01-21
+**Version**: 1.0.2 | **Ratified**: 2025-09-18 | **Last Amended**: 2026-01-21
