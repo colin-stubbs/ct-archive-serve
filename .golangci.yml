@@ -1,0 +1,24 @@
+# golangci-lint configuration for ct-archive-serve
+# Intended for Go 1.25.5+.
+
+version: "2"
+
+run:
+  tests: true
+
+output:
+  formats:
+    text:
+      path: stdout
+    json:
+      path: lint.json
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosec
+

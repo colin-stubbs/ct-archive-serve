@@ -1,0 +1,28 @@
+services:
+  ct-archive-serve:
+    # For local development you can build from the Dockerfile:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Or replace with the published image (GHCR):
+    # image: ghcr.io/<owner>/<repo>:latest
+    image: ct-archive-serve:local
+
+    ports:
+      # Default: expose container port 8080 on host 8080.
+      - "8080:8080"
+      # Optional: expose directly on host TCP/80.
+      # - "80:8080"
+
+    environment:
+      # Archive root inside the container (matches default in spec/tasks).
+      CT_ARCHIVE_PATH: /var/log/ct/archive
+      CT_ARCHIVE_FOLDER_PATTERN: ct_*
+
+      # Optional: recommended when running behind a reverse proxy.
+      # CT_HTTP_TRUSTED_SOURCES: "127.0.0.1/32"
+
+    volumes:
+      # Put your downloaded `ct_*` folders under ./archive on the host.
+      - ./archive:/var/log/ct/archive:ro
+

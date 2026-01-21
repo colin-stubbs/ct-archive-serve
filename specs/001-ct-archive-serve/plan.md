@@ -1,0 +1,115 @@
+# Implementation Plan: ct-archive-serve (Static CT archive HTTP server)
+
+**Branch**: `001-ct-archive-serve` | **Date**: 2026-01-20 | **Spec**: `specs/001-ct-archive-serve/spec.md`
+**Input**: Feature specification from `specs/001-ct-archive-serve/spec.md`
+
+**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
+
+## Summary
+
+Implement `ct-archive-serve`, a native `net/http` server that serves Static-CT monitoring endpoints directly from `photocamera-archiver` zip archives on disk. This is intended for archives downloaded via torrents (e.g., `ct_<LOG_NAME>/NNN.zip` folders from `torrents.rss` in `geomys/ct-archive`) so CT readers can consume them without unzipping. The server listens on TCP/8080 by default and uses environment variables for configuration; CLI flags only toggle logging/help. `ct-archive-serve` is intended to be deployed behind a reverse proxy that provides TLS termination and rate limiting.
+
+## Technical Context
+
+**Language/Version**: Go 1.25.5+  
+**Primary Dependencies**: Standard library + Prometheus client (`net/http`, `archive/zip`, `os`, `path/filepath`, `context`, `log/slog`, `github.com/prometheus/client_golang/prometheus/promhttp`)  
+**Storage**: Local filesystem (read-only archives)  
+**Testing**: `go test ./...` (unit tests + integration tests using temp dirs and generated zip files)  
+**CI/CD**: GitHub Actions (public GitHub repo); build outputs published to GHCR  
+**Target Platform**: Linux server/container  
+**Project Type**: Single project (Go CLI tool under `cmd/`)  
+**Performance Goals**: Perform under extreme load such that scaling is primarily constrained by hardware (CPU, memory bandwidth, disk throughput), not avoidable software overhead. Optimize for a **large working set** (requests spread across many zip parts/tiles).  
+**Constraints**:
+- Must listen on HTTP TCP/8080 by default
+- Must be fully configurable via environment variables (no config files)
+- Must configure safe HTTP server timeouts/limits to avoid resource exhaustion under slow/abusive clients
+- Must rely on a reverse proxy for TLS termination and rate limiting (no in-process rate limiting)
+- Must be implemented independently in this repository (no reuse of internal codebases as a dependency; stdlib preferred; upstream CT libraries allowed)
+- Must support multiple archived logs under a top-level archive directory
+- Must open and serve zip entries via seekable/random-access reads (avoid whole-zip decompression)
+**Scale/Scope**: 10s–100s of archives; archives may contain 1–1000 zip parts per log
+
+## Implementation Notes
+
+- Zip entry serving will use Go standard library `archive/zip` with `zip.OpenReader` (or `zip.NewReader` over an `io.ReaderAt`) to ensure random-access reads via the central directory and streaming decompression of only the requested entry.
+- `/monitor.json` URL formation will derive the “public base URL” from the incoming request headers (`Host`, and `X-Forwarded-Host`/`X-Forwarded-Proto` when present) so the server does not need (and does not validate) a configured hostname/transport.
+
+## Performance Architecture (Extreme Load)
+
+### Design goals
+
+- **No request-path rescans**: directory walking/globbing is performed at startup and via a periodic refresh loop only.
+- **Bounded, reusable zip state**: avoid repeated open+central-directory parse for hot zip parts by caching open `*os.File` + parsed zip reader/index.
+- **Bounded resource usage**: caches are capped and evict (LRU) to handle large working sets without unbounded growth.
+- **Low contention**: avoid a single global lock on hot paths; shard caches/index by log and/or zip part.
+- **Low-cardinality metrics**: expose Prometheus metrics only for `/monitor.json` and per-`<log>` aggregates (no per-path, per-endpoint, or per-status labeling).
+
+### Core components (internal/ct-archive-serve)
+
+- **ArchiveIndex**: in-memory index mapping `<log>` → archive folder path + known zip parts, refreshed periodically (`CT_ARCHIVE_REFRESH_INTERVAL`).
+- **ZipPartCache**: bounded cache (config: `CT_ZIP_CACHE_MAX_OPEN`) that retains open file handles and a prebuilt entry index for each zip part.
+- **ZipEntryIndex**: map-like structure created from the zip central directory (entry name → `*zip.File`/metadata) to make per-request lookup O(1) for an already-cached zip part.
+
+### Request hot path (intended)
+
+- Parse + validate request path
+- Lookup `<log>` in `ArchiveIndex` (no filesystem traversal)
+- Select zip part for the asset (math for tiles/data; prefer `000.zip` for shared metadata)
+- Get zip part from `ZipPartCache` (open+index on miss; reuse on hit; evict LRU on pressure)
+- Stream-decompress only the requested entry to the HTTP response writer
+
+## Performance Validation Approach
+
+- Add **benchmarks** that simulate a large working set (many distinct tile/data requests across many zip parts) and ensure overhead is not dominated by avoidable work (archive rescans, repeated index parsing, lock contention).
+- Use Go profiling (`pprof`) during benchmark runs to confirm the dominant costs are zip decompression, disk reads, and network writes.
+
+## Constitution Check
+
+*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+
+- Use explicit error handling and wrapped errors (`fmt.Errorf("context: %w", err)`).
+- Avoid global mutable state; inject dependencies via constructors where practical.
+- Prevent path traversal; never serve filesystem paths outside the configured archive root.
+- Keep `cmd/ct-archive-serve` thin; core logic in `internal/ct-archive-serve`.
+- Provide unit tests for path parsing, routing, zip selection, and 404 behavior.
+
+## Project Structure
+
+### Documentation (this feature)
+
+```text
+specs/001-ct-archive-serve/
+├── plan.md              # This file (/speckit.plan command output)
+├── research.md          # Phase 0 output (/speckit.plan command)
+├── data-model.md        # Phase 1 output (/speckit.plan command)
+├── quickstart.md        # Phase 1 output (/speckit.plan command)
+├── contracts/           # Phase 1 output (/speckit.plan command)
+└── tasks.md             # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
+```
+
+### Source Code (repository root)
+```text
+cmd/
+└── ct-archive-serve/
+    └── main.go
+
+internal/
+└── ct-archive-serve/
+    ├── config.go
+    ├── server.go
+    ├── routing.go
+    ├── archive_index.go
+    ├── monitor_json.go
+    ├── zip_reader.go
+    └── *_test.go
+```
+
+**Structure Decision**: Add a new CLI entrypoint under `cmd/ct-archive-serve/` and implement archive discovery, request routing, and zip-backed content serving in `internal/ct-archive-serve/`.
+
+## Complexity Tracking
+
+> **Fill ONLY if Constitution Check has violations that must be justified**
+
+| Violation | Why Needed | Simpler Alternative Rejected Because |
+|-----------|------------|-------------------------------------|
+| None | N/A | N/A |

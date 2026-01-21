@@ -1,0 +1,194 @@
+# ct-archive-serve Constitution
+
+This constitution defines the fundamental principles that guide all development work in the ct-archive-serve repository. These principles ensure code quality, maintainability, reliability, and user experience consistency across all tools and components.
+
+## Code Quality Principles
+
+### 1. Clean Architecture and Design
+- **Separation of Concerns**: Structure code into clear layers (handlers/controllers, services/use cases, repositories/data access, domain models)
+- **Interface-Driven Development**: Prefer interfaces over concrete types for all public APIs to enhance testability and flexibility
+- **Dependency Injection**: Use explicit dependency injection rather than global state or singletons
+- **Composition over Inheritance**: Favor small, purpose-specific interfaces and composition patterns
+- **Single Responsibility**: Each function, struct, and package should have one clear purpose
+
+### 2. Code Readability and Maintainability
+- **Self-Documenting Code**: Write code that explains itself; use comments only for "why" not "what"
+- **Meaningful Names**: Variables, functions, and types should reveal their purpose and intent
+- **Constants over Magic Numbers**: Replace hard-coded values with named constants at appropriate scope
+- **DRY (Don't Repeat Yourself)**: Extract repeated logic into reusable functions or utilities
+- **Small Functions**: Keep functions focused and short; if a function needs extensive comments, split it
+
+### 3. Error Handling
+- **Explicit Error Handling**: Always check and handle errors explicitly; never ignore errors
+- **Wrapped Errors**: Use `fmt.Errorf("context: %w", err)` for error traceability and context
+- **Error Context**: Provide meaningful error messages that help diagnose issues
+- **Error Types**: Use sentinel errors or custom error types for error classification when appropriate
+
+### 4. Resource Management
+- **Defer Cleanup**: Always defer closing resources (files, connections, channels) immediately after acquisition
+- **Context Propagation**: Use `context.Context` for request-scoped values, deadlines, and cancellations
+- **Goroutine Safety**: Guard shared state with channels or sync primitives; avoid race conditions
+- **Resource Leaks**: Ensure all goroutines can be cancelled and all resources are properly released
+
+### 5. Code Organization
+- **Consistent Structure**: Follow established project layout patterns (bin/, build/cmd/, tests/, etc.)
+- **Package Boundaries**: Group related functionality logically; avoid circular dependencies
+- **File Organization**: Keep related code together; use consistent naming conventions
+- **Import Management**: Organize imports (stdlib, third-party, local) and use `goimports`
+
+## Testing Standards
+
+### 1. Test Coverage Requirements
+- **Unit Tests**: Every exported function must have unit tests with adequate coverage
+- **Edge Cases**: Test boundary conditions, error paths, and exceptional scenarios
+- **Table-Driven Tests**: Use table-driven test patterns for multiple similar test cases
+- **Test Coverage**: Maintain high test coverage for critical paths (aim for >80% for core logic)
+
+### 2. Test Categories
+- **Unit Tests**: Fast, isolated tests for individual functions and methods
+- **Integration Tests**: Test component interactions and workflows with real dependencies
+- **Performance Tests**: Benchmark performance-critical code and monitor for regressions
+- **Contract Tests**: Verify API contracts and protocol compliance (RFC6962, Static CT API)
+- **End-to-End Tests**: Test complete workflows from start to finish
+- **Error Injection Tests**: Test error handling, recovery, and resilience scenarios
+
+### 3. Test Quality
+- **Test Independence**: Tests must be independent and isolated; no shared state between tests
+- **Descriptive Names**: Test names should clearly describe what is being tested and expected outcome
+- **Test Data**: Use realistic test data; avoid hard-coded magic values where possible
+- **Mock External Dependencies**: Mock HTTP clients, file systems, and external services
+- **Parallel Execution**: Enable parallel test execution where safe (`t.Parallel()`)
+
+### 4. Test Organization
+- **Test Files**: Place tests in `*_test.go` files alongside source code
+- **Test Packages**: Use package naming conventions (`package` vs `package_test`)
+- **Test Utilities**: Share test utilities through dedicated test helper packages
+- **Build Tags**: Use build tags to separate unit tests from integration/performance tests
+
+### 5. Continuous Testing
+- **Pre-Commit**: Run unit tests before committing code
+- **CI/CD Integration**: All tests must pass in CI/CD pipelines
+- **Performance Baselines**: Monitor and alert on performance test regressions
+- **Test Maintenance**: Keep tests updated when APIs change; remove obsolete tests
+
+## User Experience Consistency
+
+### 1. CLI Interface Standards
+- **Consistent Flags**: Use consistent flag names and behaviors across all tools (`-v/--verbose`, `-d/--debug`, `-h/--help`)
+- **Help Documentation**: All tools must provide comprehensive `-h/--help` output documenting all supported environment variables
+- **Error Messages**: Provide clear, actionable error messages that guide users to resolution
+- **Exit Codes**: Use standard exit codes (0 for success, non-zero for errors) consistently
+
+### 2. Logging Standards
+- **Log Levels**: Use appropriate log levels (INFO, VERBOSE, DEBUG) consistently across all tools
+- **Structured Logging**: Use structured logging with consistent field names and formats
+- **Context Information**: Include relevant context (log ID, index, range) in log messages
+- **Performance Logging**: Log performance metrics (RPS, latency) at appropriate intervals
+
+### 3. Configuration Management
+- **Environment Variables**: Document all environment variables in CLI help and README
+- **Default Values**: Provide sensible defaults for all configuration options
+- **Configuration Validation**: Validate configuration on startup and provide clear error messages
+- **Configuration Documentation**: Keep README and help output synchronized with actual implementation
+
+### 4. Behavior Consistency
+- **Stateless Operations**: Tools should be stateless where possible (e.g., `ct-archive-serve`)
+- **State Management**: When state is required, use consistent state file formats and locations
+- **Graceful Shutdown**: All tools must handle shutdown signals gracefully and clean up resources
+- **Progress Reporting**: Long-running operations should provide progress feedback
+
+### 5. Documentation Standards
+- **README Accuracy**: README must accurately reflect current tool behavior and configuration
+- **CHANGES.md**: Maintain CHANGES.md with all significant changes, dated and summarized
+- **Code Comments**: Document public APIs with GoDoc-style comments
+- **Architecture Documentation**: Maintain architecture documentation for complex components
+
+## Performance Requirements
+
+### 1. High-Throughput Design
+- **Parallel Processing**: Use worker pools and parallel processing for I/O-bound operations
+- **Connection Pooling**: Maintain persistent HTTP connections with appropriate pool sizes
+- **Streaming Processing**: Use streaming/chunking for large datasets to avoid memory issues
+- **Efficient Algorithms**: Choose algorithms and data structures optimized for performance
+
+### 2. Resource Efficiency
+- **Memory Management**: Minimize allocations; reuse buffers and objects where possible
+- **I/O Optimization**: Reduce redundant file system operations; batch operations when possible
+- **CPU Efficiency**: Avoid unnecessary computations; cache expensive operations
+- **Network Efficiency**: Minimize HTTP requests; use appropriate batch sizes and bit-alignment
+
+### 3. Rate Limiting and Backpressure
+- **Respect Rate Limits**: Always respect CT log rate limits and implement adaptive rate limiting
+- **Backoff Strategies**: Use exponential backoff for retries with jitter
+- **Circuit Breakers**: Implement circuit breakers to prevent cascading failures
+- **Burst Management**: Configure burst sizes appropriately for worker pools
+
+### 4. Observability and Monitoring
+- **Metrics Collection**: Collect and expose performance metrics (RPS, latency, error rates)
+- **Tracing**: Use OpenTelemetry for distributed tracing across service boundaries
+- **Log Correlation**: Include trace IDs and request IDs in logs for correlation
+- **Performance Baselines**: Establish and monitor performance baselines
+
+### 5. Scalability Considerations
+- **Horizontal Scaling**: Design for horizontal scaling where applicable
+- **Stateless Design**: Prefer stateless designs to enable scaling
+- **Resource Limits**: Respect system resource limits and handle resource exhaustion gracefully
+- **Load Testing**: Test with realistic load scenarios and data volumes
+
+## Security Principles
+
+### 1. Input Validation
+- **Validate All Inputs**: Validate and sanitize all inputs from external sources
+- **Path Traversal Protection**: Prevent directory traversal attacks in file operations
+- **Size Limits**: Enforce reasonable size limits on inputs and responses
+
+### 2. Secure Defaults
+- **Secure Configuration**: Use secure defaults for TLS, authentication, and authorization
+- **No Hardcoded Secrets**: Never hardcode secrets, API keys, or credentials
+- **Environment Variables**: Use environment variables for sensitive configuration
+
+### 3. Error Information Disclosure
+- **Safe Error Messages**: Don't expose sensitive information in error messages
+- **Debug Mode**: Restrict detailed error information to debug mode only
+
+## Tool-Specific Requirements
+
+### ct-archive-server
+- **Stateless Operation**: Must operate without persistent state files
+- **TO BE COMPLETED**
+
+## Enforcement and Compliance
+
+### 1. Code Review
+- All code changes must be reviewed against these principles
+- Reviewers should verify test coverage, error handling, and performance implications
+- Architecture changes should be documented and reviewed
+
+### 2. Automated Checks
+- Use `golangci-lint` for code quality enforcement
+- Run tests in CI/CD with coverage reporting
+- Use `govulncheck` and `trivy` for security vulnerability scanning
+- Enforce formatting with `go fmt` and `goimports`
+
+### 3. Continuous Improvement
+- Regularly review and update these principles based on lessons learned
+- Refactor code to improve quality and maintainability
+- Address technical debt proactively
+- Leave code cleaner than you found it
+
+## Exceptions and Evolution
+
+### When to Deviate
+- Document any deviations from these principles with clear justification
+- Consider trade-offs carefully (e.g., performance vs. readability)
+- Get team consensus for significant architectural deviations
+
+### Principle Evolution
+- These principles should evolve with the project
+- Propose changes through discussion and consensus
+- Update this document when principles change
+
+---
+
+*This constitution is a living document. It should be reviewed regularly and updated as the project evolves and new best practices emerge.*
+
