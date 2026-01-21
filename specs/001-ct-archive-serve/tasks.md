@@ -47,6 +47,8 @@
 
 - [ ] T007 Add metrics unit tests in `internal/ct-archive-serve/metrics_test.go` asserting low-cardinality labels: only `/monitor.json` aggregate, and per-`<log>` aggregate for all `/<log>/...` combined (no full-path / endpoint / status labels per `spec.md` `NFR-009`)
 - [ ] T008 Implement metrics in `internal/ct-archive-serve/metrics.go` (counters + durations for `/monitor.json`, and counters + durations labeled by `log` for `/<log>/...`)
+- [ ] T048 Add resource observability metrics tests in `internal/ct-archive-serve/metrics_test.go` (assert low-cardinality gauges exist for cache/index/integrity state and have no per-request/path labels; aligns with constitution Principle IV)
+- [ ] T049 Implement resource observability gauges in `internal/ct-archive-serve/metrics.go` (e.g., open zip parts, cache size/evictions, integrity passed/failed counts, discovered logs/zip parts) and update `server.go`/caches to keep them current
 
 ### Routing + path safety
 
@@ -57,6 +59,8 @@
 
 - [ ] T011 Add archive index tests in `internal/ct-archive-serve/archive_index_test.go` for discovery under `CT_ARCHIVE_PATH`, mapping `<log>`→folder path via `CT_ARCHIVE_FOLDER_PATTERN` prefix stripping (`FR-003a`), and enumerating `NNN.zip` parts
 - [ ] T012 Implement archive discovery + in-memory index in `internal/ct-archive-serve/archive_index.go` (startup build + periodic refresh loop controlled by `CT_ARCHIVE_REFRESH_INTERVAL`; request hot path MUST use in-memory snapshot and MUST NOT rescan disk per `spec.md` `SC-006`)
+- [ ] T050 Add `<log>` collision handling tests in `internal/ct-archive-serve/archive_index_test.go` (two folders mapping to same `<log>` after `FR-003a` prefix stripping MUST fail startup with invalid configuration per `spec.md` `FR-003b`)
+- [ ] T051 Implement `<log>` collision detection in `internal/ct-archive-serve/archive_index.go` so startup fails deterministically with a clear error listing colliding folders per `spec.md` `FR-003b`
 
 ### Zip integrity verification (torrent-friendly) + zip entry streaming
 
@@ -88,6 +92,8 @@
 - [ ] T023 [US1] Implement monitor snapshot builder in `internal/ct-archive-serve/monitor_json.go` per `spec.md` (`FR-006`, `FR-006a`, `FR-006b`)
 - [ ] T024 [US1] Implement periodic refresh loop + atomic snapshot in `internal/ct-archive-serve/monitor_json.go` using `CT_MONITOR_JSON_REFRESH_INTERVAL` and context-driven shutdown per `spec.md` (`FR-007`)
 - [ ] T025 [US1] Wire `GET /monitor.json` handler in `internal/ct-archive-serve/server.go` (render `version="3.0"`, one operator `{name:"ct-archive-serve", email:[], logs:[], tiled_logs:[...]}`, set `log_list_timestamp`, set `Content-Type: application/json`) per `spec.md` (`FR-006`)
+- [ ] T052 [P] [US1] Add `/monitor.json` refresh failure behavior tests in `internal/ct-archive-serve/monitor_json_test.go` (if the most recent refresh attempt fails, `GET /monitor.json` MUST return `503` until the next successful refresh per `spec.md` `FR-006`)
+- [ ] T053 [US1] Implement `/monitor.json` refresh failure behavior in `internal/ct-archive-serve/monitor_json.go` per `spec.md` `FR-006` (track last refresh error state; serve `503` when unhealthy; resume `200` after next successful refresh; log errors)
 
 ---
 
@@ -119,7 +125,7 @@
 
 - [ ] T037 [P] Implement bounded `ZipPartCache` (LRU/eviction; cap open zip parts via `CT_ZIP_CACHE_MAX_OPEN`) in `internal/ct-archive-serve/zip_cache.go`
 - [ ] T038 Integrate `ZipPartCache` into `internal/ct-archive-serve/zip_reader.go` and `internal/ct-archive-serve/server.go` to avoid repeated central directory parsing on hot zip parts per `spec.md` (`SC-006`)
-- [ ] T039 [P] Add a targeted concurrent cache test in `internal/ct-archive-serve/zip_cache_test.go` and update `.github/workflows/ci.yml` to run `go test -race ./...` (at least on linux/amd64)
+- [ ] T039 [P] Add a targeted concurrent cache test in `internal/ct-archive-serve/zip_cache_test.go` and verify CI runs `go test -race ./...` (at least on linux/amd64)
 - [ ] T040 Add large working-set benchmarks in `internal/ct-archive-serve/perf_bench_test.go` and include `pprof` guidance in comments for CPU/alloc/mutex profiling
 
 ---
@@ -129,6 +135,10 @@
 - [ ] T041 Update `internal/ct-archive-serve/README.md` with: env vars, routing summary, zip integrity behavior (503), logging policy, metrics policy, and performance tuning/benchmark commands
 - [ ] T042 Update top-level `README.md` if needed to reflect any CLI or operational changes introduced during implementation
 - [ ] T043 Record completion notes in `CHANGES.md` (most recent entry first, with date and bullet list)
+- [x] T044 Verify NFR-011 security gates are executed in CI (`.github/workflows/ci.yml` runs `golangci-lint`, `govulncheck`, and `trivy`)
+- [x] T045 Verify NFR-013 build/release workflows are present (`.github/workflows/ci.yml`, `.github/workflows/image.yml`) and image publishing targets `ghcr.io/${{ github.repository }}`
+- [x] T046 Verify NFR-014 container operation examples exist and are documented (`compose.yml`, `README.md` docker run + compose/podman compose examples)
+- [x] T047 Verify NFR-015 container defaults are safe-by-default (`Dockerfile` runs as `nobody/nogroup` and exposes/listens on TCP/8080; README documents `-p 80:8080`)
 
 ---
 

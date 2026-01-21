@@ -24,6 +24,9 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Test (race detector)
+        run: go test -race ./...
+
       - name: Lint
         uses: golangci/golangci-lint-action@v6
         with:
@@ -33,4 +36,15 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
+
+      - name: Vulnerability scan (trivy)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          vuln-type: library
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
 

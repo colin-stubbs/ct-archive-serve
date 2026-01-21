@@ -50,7 +50,7 @@ A user downloads archived CT logs via torrents (e.g., from the `torrents.rss` fe
 **Acceptance Scenarios**:
 
 1. **Given** a CT archive path with multiple discovered log folders each containing `000.zip` with `log.v3.json`, **When** a client requests `GET /monitor.json`, **Then** the server responds `200` with `Content-Type: application/json` and a JSON document listing those logs.
-2. **Given** a CT archive path with no valid `000.zip` + `log.v3.json`, **When** a client requests `GET /monitor.json`, **Then** the server responds `200` with `Content-Type: application/json` and an empty `tiled_logs` list.
+2. **Given** a CT archive path where `/monitor.json` refresh cannot succeed (e.g., no valid `000.zip` + `log.v3.json`), **When** a client requests `GET /monitor.json`, **Then** the server responds `503` (temporarily unavailable) until a subsequent refresh succeeds (see `FR-006` refresh failure behavior).
 
 ---
 
@@ -73,6 +73,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
 
 - **Invalid paths**: Requests containing `..` or other traversal attempts MUST NOT escape the archive namespace (respond `404`).
 - **Invalid tile encoding**: Requests with invalid `<L>`, invalid tile-index encoding, or invalid partial width MUST respond `404`. For `.p/<W>` requests, `<W>` MUST be an integer in the inclusive range 1..255 (full tiles use the non-`.p/` form).
+- **Invalid issuer fingerprint**: For `/<log>/issuer/<fingerprint>`, `<fingerprint>` MUST be a non-empty lowercase hex string (`0-9a-f`). Any other form (including uppercase hex) MUST respond `404`.
 - **Missing archive zips**: If the archive directory is missing required zip(s) for a given request, the server MUST respond `404`.
 - **Zip part temporarily unavailable**: If the required zip part exists on disk but fails basic zip integrity checks (e.g., because it is still downloading), the server MUST respond `503` for requests that require that zip part (see `FR-013`).
 - **Right-edge partial tiles**: For requests that include `.p/<W>`, `ct-archive-serve` MUST treat the path as a **literal archive entry path** and MUST NOT attempt to synthesize or rewrite tiles based on checkpoint tree size. The server returns `200` if and only if the corresponding zip entry exists; otherwise `404` (consistent with missing content).
@@ -104,6 +105,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
   - For unknown/unsupported routes, the server MUST respond `404` regardless of method.
 - **FR-003**: `ct-archive-serve` MUST support serving multiple archived CT logs from subfolders under `CT_ARCHIVE_PATH` (default: `/var/log/ct/archive`) filtered by `CT_ARCHIVE_FOLDER_PATTERN` (default: `ct_*`).
 - **FR-003a**: `ct-archive-serve` MUST derive the request `<log>` path segment from the discovered archive folder name by stripping a configured prefix. `CT_ARCHIVE_FOLDER_PATTERN` MUST be of the form `<prefix>*` (literal prefix followed by a single trailing `*`), and `ct-archive-serve` MUST strip exactly `<prefix>` from the folder name to produce `<log>`. If `CT_ARCHIVE_FOLDER_PATTERN` is not of the supported `<prefix>*` form, `ct-archive-serve` MUST fail startup with an invalid configuration error.
+- **FR-003b**: `<log>` collision handling: If two or more discovered archive folders map to the same `<log>` after applying the `CT_ARCHIVE_FOLDER_PATTERN` prefix strip (`FR-003a`), `ct-archive-serve` MUST fail startup with an invalid configuration error. The error message SHOULD include the colliding folder names to aid remediation.
 - **FR-004**: `ct-archive-serve` MUST use environment variables to configure all aspects of operation, with documented defaults. Environment variables configure runtime behavior; CLI flags are limited to help output and logging verbosity/debug only.
 - **FR-005**: `ct-archive-serve` MUST support `-h|--help|-d|--debug|-v|--verbose` CLI arguments to modify operation (help and logging).
 - **FR-006**: `ct-archive-serve` MUST generate and periodically refresh `GET /monitor.json` by extracting `log.v3.json` from `000.zip` in each discovered archive folder. The generated list MUST use `tiled_logs` entries compatible with common CT log list v3 consumers.
@@ -130,6 +132,10 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
       - `tiled_logs` populated from discovered archive folders (one entry per folder with a valid `000.zip` → `log.v3.json`)
       - `tiled_logs` MUST be sorted deterministically by `<log>` in ascending ASCII lexicographic order (where `<log>` is derived from the archive folder name per `FR-003a`)
     - `log_list_timestamp` SHOULD be set to the time the current snapshot was generated/refreshed
+  - **Refresh failure behavior**:
+    - If the most recent refresh attempt fails for any reason (e.g., because a `000.zip` is temporarily unreadable or `log.v3.json` parsing fails), `ct-archive-serve` MUST respond to `GET /monitor.json` with HTTP `503` (temporarily unavailable), and SHOULD log an error describing the refresh failure.
+    - When responding `503`, the server SHOULD return `Content-Type: application/json` with a small error body (e.g., `{"error":"temporarily unavailable"}`) rather than a log list v3 document.
+    - Once a subsequent refresh attempt succeeds, `ct-archive-serve` MUST resume serving `200` with the newly generated snapshot.
 
   Example minimal shape (illustrative only; values are placeholders — fields within each `tiled_logs[]` entry are sourced from `log.v3.json` and then adjusted per requirements):
 
@@ -192,7 +198,11 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
   - `CT_ARCHIVE_REFRESH_INTERVAL` (default: `1m`) — how frequently to refresh the on-disk archive folder/zip-part index (must not run on the request hot path)
 - **FR-013**: Zip integrity verification and temporary unavailability handling:
   - `ct-archive-serve` MUST treat archive zip parts as potentially incomplete (e.g., during torrent downloads) and MUST perform **basic zip integrity checks** before using a zip part to serve content.
-  - Basic zip integrity checks MUST be limited to establishing that the zip file is readable by Go's `archive/zip` (e.g., the central directory/EOCD can be parsed). The server MUST NOT attempt Merkle/inclusion verification as part of serving.
+  - Basic zip integrity checks MUST be limited to establishing that the zip file is structurally valid for serving via Go's `archive/zip`:
+    - The central directory/EOCD MUST be readable (e.g., `zip.OpenReader` succeeds).
+    - Local file headers MUST be structurally valid for entries referenced by the central directory (e.g., iterate `r.File` and `Open()`/`Close()` each entry **without reading entry bodies**), to validate offsets/signatures for likely-truncated downloads.
+    - These checks MUST NOT require reading or buffering entire entry payloads; the server MUST only read zip metadata/headers needed to establish structural validity.
+  - The server MUST NOT attempt Merkle/inclusion verification as part of serving.
   - If a request requires a zip part and that zip part fails basic zip integrity checks, the server MUST return HTTP `503` to indicate the requested content is temporarily unavailable.
   - To avoid repeated integrity work, the server MUST maintain in-memory integrity caches:
     - A **passed** set of zip parts that have passed integrity checks. Entries MUST be kept for the lifetime of the process and MUST only be removed if subsequent open/read attempts for that zip part fail (which MUST be handled gracefully).

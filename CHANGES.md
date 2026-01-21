@@ -1,3 +1,24 @@
+* 2026-01-21 - Align ZIP integrity verification scope; document trusted forwarded headers
+
+- Updated `spec.md` `FR-013` to require ZIP structural validity checks including central directory/EOCD and local file header verification (without reading entry bodies)
+- Updated `specs/001-ct-archive-serve/contracts/http.md` to document `CT_HTTP_TRUSTED_SOURCES` gating for `X-Forwarded-*` in `/monitor.json` URL formation
+
+* 2026-01-21 - Clarify forwarded-header trust gating; specify issuer fingerprint validation
+
+- Updated `specs/001-ct-archive-serve/plan.md` to explicitly describe `CT_HTTP_TRUSTED_SOURCES` gating for `X-Forwarded-*` during `/monitor.json` URL formation
+- Updated `specs/001-ct-archive-serve/spec.md` Edge Cases to specify issuer `<fingerprint>` validation (non-empty lowercase hex; otherwise `404`)
+
+* 2026-01-21 - Clarify monitor.json refresh and log collision behavior; add observability tasks
+
+- Updated `spec.md` to define `/monitor.json` refresh failure behavior (`503` until the next successful refresh) and to define `<log>` collision handling as a startup configuration error
+- Updated `plan.md` and `tasks.md` to add explicit tasks for resource observability gauges and for tests covering refresh failures and `<log>` collisions
+- Updated CI to run `go test -race ./...` to align with concurrency-safety verification in the task plan
+
+* 2026-01-21 - Enforce Trivy scanning in CI and close NFR-013/014/015 task gaps
+
+- Updated `.github/workflows/ci.yml` to run Trivy (`aquasecurity/trivy-action`) as part of CI, alongside `golangci-lint` and `govulncheck` (NFR-011)
+- Updated `specs/001-ct-archive-serve/tasks.md` to explicitly track/verify existing CI workflows and container artifacts (NFR-013/014/015)
+
 * 2026-01-21 - Clean up constitution scope for ct-archive-serve
 
 - Updated `.specify/memory/constitution.md` to align “integrity verification” with `ct-archive-serve` (ZIP structural integrity checks only; Merkle/inclusion verification is out of scope for serving paths)

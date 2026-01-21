@@ -46,6 +46,8 @@ You can operate `ct-archive-serve` entirely via containers. The server expects a
 
 If a zip part exists but fails basic zip integrity checks (common while a torrent download is still in progress), `ct-archive-serve` returns HTTP `503` for requests that require that zip part. Failed zip parts are re-tried after `CT_ZIP_INTEGRITY_FAIL_TTL` (default `5m`).
 
+If `/monitor.json` refresh fails (e.g., due to unreadable `000.zip` or invalid `log.v3.json`), `ct-archive-serve` returns HTTP `503` for `GET /monitor.json` until the next successful refresh.
+
 ### docker run
 
 - Ensure your archive is available on the host, e.g. `./archive/ct_example_log/000.zip`

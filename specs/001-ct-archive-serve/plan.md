@@ -34,8 +34,9 @@ Implement `ct-archive-serve`, a native `net/http` server that serves Static-CT m
 ## Implementation Notes
 
 - Zip entry serving will use Go standard library `archive/zip` with `zip.OpenReader` (or `zip.NewReader` over an `io.ReaderAt`) to ensure random-access reads via the central directory and streaming decompression of only the requested entry.
-- `/monitor.json` URL formation will derive the “public base URL” from the incoming request headers (`Host`, and `X-Forwarded-Host`/`X-Forwarded-Proto` when present) so the server does not need (and does not validate) a configured hostname/transport.
+- `/monitor.json` URL formation will derive the “public base URL” from the incoming request headers (`Host`, and `X-Forwarded-Host`/`X-Forwarded-Proto` **only when trusted** via `CT_HTTP_TRUSTED_SOURCES`), so the server does not need (and does not validate) a configured hostname/transport. When a chosen `X-Forwarded-*` value contains a comma-separated list, use the first non-empty element after trimming ASCII whitespace; scheme should be lowercased for URL construction.
 - `/monitor.json` output must be deterministic: `tiled_logs` should be sorted by `<log>` ascending per `spec.md` `FR-006`.
+- `/monitor.json` refresh failure behavior: if the most recent refresh attempt fails, `GET /monitor.json` returns `503` (temporarily unavailable) until the next successful refresh per `spec.md` `FR-006`.
 - Tile index `<N>` parsing must follow the tlog "groups-of-three" decimal path encoding per `spec.md` `FR-008a` (so `<N>` may span multiple path segments).
 - Zip integrity handling for torrent-downloaded archives will use a **structural validity check** (no decompression): open the zip with `zip.OpenReader` (central directory/EOCD) and then iterate entries and `Open()`/`Close()` each one to validate local file headers/offsets. Results are cached per `spec.md` `FR-013`; zip parts that fail integrity checks cause request handlers to return `503` until a re-check succeeds.
 
