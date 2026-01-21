@@ -7,7 +7,7 @@
 
 ## Summary
 
-Implement `ct-archive-serve`, a native `net/http` server that serves Static-CT monitoring endpoints directly from `photocamera-archiver` zip archives on disk. This is intended for archives downloaded via torrents (e.g., `ct_<LOG_NAME>/NNN.zip` folders from `torrents.rss` in `geomys/ct-archive`) so CT readers can consume them without unzipping. The server listens on TCP/8080 by default and uses environment variables for configuration; CLI flags only toggle logging/help. `ct-archive-serve` is intended to be deployed behind a reverse proxy that provides TLS termination and rate limiting.
+Implement `ct-archive-serve`, a native `net/http` server that serves Static-CT monitoring endpoints directly from `photocamera-archiver` zip archives on disk. This is intended for archives downloaded via torrents (e.g., `ct_<LOG_NAME>/NNN.zip` folders from `torrents.rss` in `geomys/ct-archive`) so CT readers can consume them without unzipping. The server listens on TCP/8080 by default and uses environment variables for configuration; CLI flags only toggle logging/help. `ct-archive-serve` is intended to be deployed behind a reverse proxy that provides TLS termination and rate limiting. If a required zip part exists but fails structural integrity checks (often because it is still downloading), requests return `503` until the zip part passes integrity verification.
 
 ## Technical Context
 

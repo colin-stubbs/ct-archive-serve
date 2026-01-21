@@ -2,6 +2,7 @@
 
 - Restored missing `plan.md` details for HTTP method policy (`FR-002a`), deterministic `/monitor.json` ordering, tile `<N>` encoding (`FR-008a`), and zip-integrity-driven `503` behavior (`FR-013`)
 - Updated the planned source file list in `plan.md` to include `zip_cache.go`, `metrics.go`, and `logger.go`
+- Updated the `plan.md` Summary to explicitly mention the `503` behavior for incomplete zip parts
 
 * 2026-01-21 - Define zip integrity verification and 503 behavior for in-progress torrent downloads
 
