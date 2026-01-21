@@ -1,3 +1,8 @@
+* 2026-01-21 - Regenerate implementation task list for ct-archive-serve
+
+- Rewrote `specs/001-ct-archive-serve/tasks.md` to be dependency-ordered by phase/user story, with strictly sequential task IDs and required `[P]`/`[US#]` labels
+- Added/clarified tasks to align with current `spec.md` and `contracts/http.md` (method policy, trusted forwarded headers, zip integrity 503 behavior, and low-cardinality metrics)
+
 * 2026-01-21 - Restore plan.md alignment with latest spec decisions
 
 - Restored missing `plan.md` details for HTTP method policy (`FR-002a`), deterministic `/monitor.json` ordering, tile `<N>` encoding (`FR-008a`), and zip-integrity-driven `503` behavior (`FR-013`)
