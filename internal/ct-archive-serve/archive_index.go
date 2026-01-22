@@ -258,7 +258,7 @@ func buildArchiveSnapshot(cfg Config, readDir func(string) ([]os.DirEntry, error
 func discoverZipParts(folderPath string) ([]int, error) {
 	ents, err := os.ReadDir(folderPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read zip parts directory: %w", err)
 	}
 
 	var out []int

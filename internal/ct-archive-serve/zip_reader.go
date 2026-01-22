@@ -37,7 +37,7 @@ func (zr *ZipReader) SetZipPartCache(cache *ZipPartCache) {
 // - ErrZipTemporarilyUnavailable for zip integrity failures (503)
 func (zr *ZipReader) OpenEntry(zipPath, entryName string) (io.ReadCloser, error) {
 	if zr == nil {
-		return nil, fmt.Errorf("zip reader is nil")
+		return nil, errors.New("zip reader is nil")
 	}
 
 	if _, err := os.Stat(zipPath); err != nil {
@@ -119,6 +119,7 @@ type zipEntryReadCloser struct {
 }
 
 func (z *zipEntryReadCloser) Read(p []byte) (int, error) {
+	//nolint:wrapcheck // io.Reader.Read is a low-level interface method, pass-through
 	return z.entry.Read(p)
 }
 
@@ -126,9 +127,12 @@ func (z *zipEntryReadCloser) Close() error {
 	err1 := z.entry.Close()
 	err2 := z.zip.Close()
 	if err1 != nil {
-		return err1
+		return fmt.Errorf("close zip entry: %w", err1)
 	}
-	return err2
+	if err2 != nil {
+		return fmt.Errorf("close zip file: %w", err2)
+	}
+	return nil
 }
 
 // cachedZipEntryReadCloser wraps an entry ReadCloser without closing the cached zip reader.
@@ -137,10 +141,12 @@ type cachedZipEntryReadCloser struct {
 }
 
 func (c *cachedZipEntryReadCloser) Read(p []byte) (int, error) {
+	//nolint:wrapcheck // io.Reader.Read is a low-level interface method, pass-through
 	return c.entry.Read(p)
 }
 
 func (c *cachedZipEntryReadCloser) Close() error {
+	//nolint:wrapcheck // io.Closer.Close is a low-level interface method, pass-through
 	return c.entry.Close()
 	// Note: we don't close the zip reader here; it's managed by ZipPartCache
 }

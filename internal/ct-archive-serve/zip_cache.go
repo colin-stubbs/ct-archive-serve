@@ -181,7 +181,7 @@ func NewZipPartCache(maxOpen int, metrics *Metrics) *ZipPartCache {
 // Returns the entry and nil error if found/cached, or nil and error on failure.
 func (c *ZipPartCache) Get(path string) (*ZipPartCacheEntry, error) {
 	if c == nil {
-		return nil, fmt.Errorf("zip part cache not initialized")
+		return nil, errors.New("zip part cache not initialized")
 	}
 
 	c.mu.Lock()

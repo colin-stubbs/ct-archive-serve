@@ -1,6 +1,7 @@
 package ctarchiveserve
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -74,7 +75,7 @@ func TestBuildArchiveSnapshot_LogCollisionFails(t *testing.T) {
 	dupReadDir := func(path string) ([]os.DirEntry, error) {
 		ents, err := os.ReadDir(path)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("read directory: %w", err)
 		}
 		// Return the same directory entry twice to force a collision code path.
 		return append(ents, ents...), nil

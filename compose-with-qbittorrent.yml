@@ -4,40 +4,44 @@ services:
 
     ports:
       # Default: expose container port 8080 on host 8080.
-      - "8080:8080"
+      - "${CT_ARCHIVE_SERVE_HOST:-127.0.0.1}:${CT_ARCHIVE_SERVE_PORT:-8082}:8080"
       # Optional: expose directly on host TCP/80.
       # - "80:8080"
 
     environment:
       - TZ=${TZ:-Etc/UTC}
-
       # Archive root inside the container (matches default in spec/tasks).
       - CT_ARCHIVE_PATH=${CT_ARCHIVE_PATH:-/var/log/ct/archive}
       - CT_ARCHIVE_FOLDER_PATTERN=${CT_ARCHIVE_FOLDER_PATTERN:-ct_*}
-
-      # Optional: recommended when running behind a reverse proxy.
-      #- CT_HTTP_TRUSTED_SOURCES="127.0.0.1/32"
-      #- CT_HTTP_TRUSTED_SOURCES="192.168.1.0/24"
-
     volumes:
       # Put your downloaded `ct_*` folders under ./archive on the host. ct-archive-serve does not require more than read-only access.
+      # shared storage with qBittorrent
       - ./archive:/var/log/ct/archive:ro
+    restart: unless-stopped
 
   qbittorrent:
     image: docker.io/qbittorrentofficial/qbittorrent-nox:latest
     environment:
       - TZ=${TZ:-Etc/UTC}
+      # Disables display/prompt and manual repsonse requirement related to the legal notice.
       - QBT_LEGAL_NOTICE=${QBT_LEGAL_NOTICE:-confirm}
-      - PUID=65534
-      - PGID=65534
-      - TZ=Etc/UTC
-      - WEBUI_PORT=8080
-      - TORRENTING_PORT=6881
+      # qBittorrent WebUI port (default: 8081)
+      - QBT_WEBUI_PORT=${QBT_WEBUI_PORT:-8081}
+      # qBittorrent Torrenting port (default: 6881)
+      - QBT_TORRENTING_PORT=${QBT_TORRENTING_PORT:-6881}
+      # qBittorrent PUID (default: 1000)
+      - PUID=${PUID:-1000}
+      # qBittorrent PGID (default: 1000)
+      - PGID=${PGID:-1000}
+      # qBittorrent UMASK (default: 022), ensures proper file permissions are set for files created by qBittorrent.
+      - UMASK=${UMASK:-022}
     volumes:
-      - /path/to/your/config:/config
-      - /path/to/your/downloads:/downloads
+      # persistent custom qBittorrent configuration,
+      - ./config:/config
+      # shared storage with ct-archive-serve
+      - ./archive:/downloads
     ports:
-      - 8080:8080
-      - 6881:6881
-      - 6881:6881/udp
+      - ${QBT_WEBUI_HOST:-127.0.0.1}:${QBT_WEBUI_PORT:-8081}:${QBT_WEBUI_PORT:-8081}/tcp
+      - ${QBT_TORRENTING_HOST:-0.0.0.0}:${QBT_TORRENTING_PORT:-6881}:${QBT_TORRENTING_PORT:-6881}/tcp
+      - ${QBT_TORRENTING_HOST:-0.0.0.0}:${QBT_TORRENTING_PORT:-6881}:${QBT_TORRENTING_PORT:-6881}/udp
     restart: unless-stopped

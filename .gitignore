@@ -36,3 +36,8 @@ bin/
 
 # golangci-lint output
 lint.json
+
+# ignore additional qBittorrent content that is not required for a fresh start
+config/
+# ignore all CT archive content... this would kill git if not ignored.
+archive/

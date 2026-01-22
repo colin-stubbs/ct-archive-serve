@@ -1,6 +1,7 @@
 package ctarchiveserve
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"os"
@@ -85,7 +86,7 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 
 	if v, ok := lookup("CT_ARCHIVE_FOLDER_PATTERN"); ok {
 		if v == "" {
-			return Config{}, fmt.Errorf("CT_ARCHIVE_FOLDER_PATTERN: empty value is invalid")
+			return Config{}, errors.New("CT_ARCHIVE_FOLDER_PATTERN: empty value is invalid")
 		}
 		cfg.ArchiveFolderPattern = v
 	}
@@ -102,7 +103,7 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 			return Config{}, fmt.Errorf("CT_MONITOR_JSON_REFRESH_INTERVAL: %w", err)
 		}
 		if d <= 0 {
-			return Config{}, fmt.Errorf("CT_MONITOR_JSON_REFRESH_INTERVAL: must be > 0")
+			return Config{}, errors.New("CT_MONITOR_JSON_REFRESH_INTERVAL: must be > 0")
 		}
 		cfg.MonitorJSONRefreshInterval = d
 	}
@@ -113,7 +114,7 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 			return Config{}, fmt.Errorf("CT_ARCHIVE_REFRESH_INTERVAL: %w", err)
 		}
 		if d <= 0 {
-			return Config{}, fmt.Errorf("CT_ARCHIVE_REFRESH_INTERVAL: must be > 0")
+			return Config{}, errors.New("CT_ARCHIVE_REFRESH_INTERVAL: must be > 0")
 		}
 		cfg.ArchiveRefreshInterval = d
 	}
@@ -124,7 +125,7 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 			return Config{}, fmt.Errorf("CT_ZIP_CACHE_MAX_OPEN: %w", err)
 		}
 		if n <= 0 {
-			return Config{}, fmt.Errorf("CT_ZIP_CACHE_MAX_OPEN: must be > 0")
+			return Config{}, errors.New("CT_ZIP_CACHE_MAX_OPEN: must be > 0")
 		}
 		cfg.ZipCacheMaxOpen = n
 	}
@@ -135,7 +136,7 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 			return Config{}, fmt.Errorf("CT_ZIP_INTEGRITY_FAIL_TTL: %w", err)
 		}
 		if d <= 0 {
-			return Config{}, fmt.Errorf("CT_ZIP_INTEGRITY_FAIL_TTL: must be > 0")
+			return Config{}, errors.New("CT_ZIP_INTEGRITY_FAIL_TTL: must be > 0")
 		}
 		cfg.ZipIntegrityFailTTL = d
 	}
@@ -146,7 +147,7 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 			return Config{}, fmt.Errorf("CT_HTTP_READ_HEADER_TIMEOUT: %w", err)
 		}
 		if d < 0 {
-			return Config{}, fmt.Errorf("CT_HTTP_READ_HEADER_TIMEOUT: must be >= 0")
+			return Config{}, errors.New("CT_HTTP_READ_HEADER_TIMEOUT: must be >= 0")
 		}
 		cfg.HTTPReadHeaderTimeout = d
 	}
@@ -157,7 +158,7 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 			return Config{}, fmt.Errorf("CT_HTTP_IDLE_TIMEOUT: %w", err)
 		}
 		if d < 0 {
-			return Config{}, fmt.Errorf("CT_HTTP_IDLE_TIMEOUT: must be >= 0")
+			return Config{}, errors.New("CT_HTTP_IDLE_TIMEOUT: must be >= 0")
 		}
 		cfg.HTTPIdleTimeout = d
 	}
@@ -168,7 +169,7 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 			return Config{}, fmt.Errorf("CT_HTTP_MAX_HEADER_BYTES: %w", err)
 		}
 		if n <= 0 {
-			return Config{}, fmt.Errorf("CT_HTTP_MAX_HEADER_BYTES: must be > 0")
+			return Config{}, errors.New("CT_HTTP_MAX_HEADER_BYTES: must be > 0")
 		}
 		cfg.HTTPMaxHeaderBytes = n
 	}
@@ -179,7 +180,7 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 			return Config{}, fmt.Errorf("CT_HTTP_WRITE_TIMEOUT: %w", err)
 		}
 		if d < 0 {
-			return Config{}, fmt.Errorf("CT_HTTP_WRITE_TIMEOUT: must be >= 0")
+			return Config{}, errors.New("CT_HTTP_WRITE_TIMEOUT: must be >= 0")
 		}
 		cfg.HTTPWriteTimeout = d
 	}
@@ -190,7 +191,7 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 			return Config{}, fmt.Errorf("CT_HTTP_READ_TIMEOUT: %w", err)
 		}
 		if d < 0 {
-			return Config{}, fmt.Errorf("CT_HTTP_READ_TIMEOUT: must be >= 0")
+			return Config{}, errors.New("CT_HTTP_READ_TIMEOUT: must be >= 0")
 		}
 		cfg.HTTPReadTimeout = d
 	}
@@ -208,10 +209,10 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 
 func parseArchiveFolderPrefix(pattern string) (string, error) {
 	if !strings.HasSuffix(pattern, "*") {
-		return "", fmt.Errorf("pattern must be of the form <prefix>* (missing trailing '*')")
+		return "", errors.New("pattern must be of the form <prefix>* (missing trailing '*')")
 	}
 	if strings.Count(pattern, "*") != 1 {
-		return "", fmt.Errorf("pattern must contain exactly one '*' and it must be the final character")
+		return "", errors.New("pattern must contain exactly one '*' and it must be the final character")
 	}
 	return strings.TrimSuffix(pattern, "*"), nil
 }

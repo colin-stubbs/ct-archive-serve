@@ -168,6 +168,9 @@ func main() {
 
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Error("Server error", "error", err)
+		//nolint:gocritic // exitAfterDefer: os.Exit is intentional here for fatal server errors
+		// The defer cancel() above is for graceful shutdown, but if ListenAndServe fails
+		// during startup, we exit immediately rather than attempting shutdown.
 		os.Exit(1)
 	}
 

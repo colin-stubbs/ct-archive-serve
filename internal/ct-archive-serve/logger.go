@@ -46,8 +46,10 @@ func (h *splitLevelHandler) Enabled(ctx context.Context, level slog.Level) bool 
 
 func (h *splitLevelHandler) Handle(ctx context.Context, r slog.Record) error {
 	if r.Level >= slog.LevelError {
+		//nolint:wrapcheck // slog.Handler.Handle is a low-level interface method, pass-through
 		return h.stderr.Handle(ctx, r)
 	}
+	//nolint:wrapcheck // slog.Handler.Handle is a low-level interface method, pass-through
 	return h.stdout.Handle(ctx, r)
 }
 

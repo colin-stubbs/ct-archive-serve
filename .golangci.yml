@@ -1,10 +1,15 @@
 # golangci-lint configuration for ct-archive-serve
 # Intended for Go 1.25.5+.
+# Focus: Security, correctness, and maintainability
 
 version: "2"
 
 run:
   tests: true
+  timeout: 10m
+  # Build tags if needed
+  # build-tags:
+  #   - integration
 
 output:
   formats:
@@ -15,21 +20,97 @@ output:
 
 linters:
   enable:
-    - errcheck
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gosec
+    # Core correctness and security
+    - errcheck          # Check that error return values are used
+    - govet             # Go vet - catches bugs and suspicious constructs
+    - staticcheck       # Static analysis with security focus
+    - unused            # Find unused code
+    - ineffassign       # Detect ineffectual assignments
+    
+    # Security-focused linters
+    - gosec             # Security checker (SQL injection, hardcoded secrets, etc.)
+    - gocritic          # Code quality and security patterns
+    - bodyclose         # Check HTTP response bodies are closed
+    - noctx             # Check context.Context is passed to functions
+    - forbidigo         # Forbid use of specific identifiers (e.g., fmt.Print in production)
+    - copyloopvar       # Detect places where loop variables are copied (Go 1.22+)
+    - errorlint         # Find error handling issues
+    - errname           # Check error naming conventions
+    - wrapcheck         # Check that errors are wrapped
+    - prealloc          # Detect slice declarations that could be pre-allocated
+    - makezero          # Check for make() calls with zero length
+    - perfsprint        # Suggest faster string formatting
+    - unconvert         # Remove unnecessary type conversions
+    - misspell          # Find commonly misspelled words
+
+linters-settings:
+  gosec:
+    # Include all security checks by default
+    # Exclude only specific rules that are false positives or not applicable
+    excludes:
+      # G304: File inclusion via variable - handled with inline //nolint comments
+      # G115: Integer overflow - handled with bounds checks and inline comments
+    severity: error
+    confidence: medium
+    # Track suppressions for audit purposes
+    # track-suppressions: true
+  
+  gocritic:
+    enabled-tags:
+      - security
+      - performance
+      - style
+      - diagnostic
+    disabled-checks:
+      # Allow some style choices
+      - commentFormatting
+      - ifElseChain
+    settings:
+      hugeParam:
+        sizeThreshold: 80
+      rangeValCopy:
+        sizeThreshold: 80
+        skipTestFuncs: true
+      dupImport:
+        threshold: 3
+  
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  
+  govet:
+    check-shadowing: true
+    enable-all: true
+  
+  staticcheck:
+    checks: ["all", "-SA1019"] # Exclude deprecated API warnings if too noisy
+  
+  forbidigo:
+    forbid:
+      - 'fmt\.Print.*'  # Use structured logging instead
+      - 'os\.Exit'      # Use graceful shutdown patterns
+  
+  noctx:
+    # Check that context is passed to HTTP requests
+    check-http-resource: true
+  
+  wrapcheck:
+    # Ignore low-level interface methods that don't need wrapping
+    ignoreSigs:
+      - 'func \(io\.Reader\)\.Read\(p \[\]byte\) \(n int, err error\)'
+      - 'func \(io\.Closer\)\.Close\(\) error'
+      - 'func \(log/slog\.Handler\)\.Handle\(context\.Context, log/slog\.Record\) error'
 
 issues:
+  # Maximum issues count per one linter
+  max-issues-per-linter: 0
+  # Maximum count of issues with the same text
+  max-same-issues: 0
+  
   exclude-rules:
-    # G304 (file inclusion via variable): Safe in tests and zip_cache.go where paths are validated
-    - path: internal/ct-archive-serve/monitor_json_test\.go$
-      linters:
-        - gosec
-      text: "G304"
-    - path: internal/ct-archive-serve/perf_bench_test\.go$
+    # G304 (file inclusion via variable): Handled with inline //nolint comments
+    # Keeping these as backup exclusions
+    - path: internal/ct-archive-serve/.*_test\.go$
       linters:
         - gosec
       text: "G304"
@@ -37,7 +118,7 @@ issues:
       linters:
         - gosec
       text: "G304"
-    # G115 (integer overflow): Bounds checks ensure safety in archive_index.go and routing.go
+    # G115 (integer overflow): Bounds checks ensure safety
     - path: internal/ct-archive-serve/archive_index\.go$
       linters:
         - gosec
@@ -46,4 +127,24 @@ issues:
       linters:
         - gosec
       text: "G115"
+    
+    # Allow some style flexibility in test files
+    - path: internal/ct-archive-serve/.*_test\.go$
+      linters:
+        - gocritic
+      text: "hugeParam"
+    - path: internal/ct-archive-serve/.*_test\.go$
+      linters:
+        - gocritic
+      text: "rangeValCopy"
+  
+  # Exclude some common false positives
+  exclude:
+    # Exclude "Error return value of . is not checked" in defer statements for Close()
+    - 'Error return value of .*\.Close\(\) is not checked'
+    # Exclude "declaration of .* shadows declaration" in test helpers
+    - 'declaration of .* shadows declaration at .*_test\.go'
+  
+  # Don't exclude issues in vendor directory (we don't have one, but good practice)
+  exclude-use-default: false
 

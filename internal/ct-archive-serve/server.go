@@ -2,6 +2,7 @@ package ctarchiveserve
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -170,14 +171,14 @@ func (s *Server) handleCheckpoint(w http.ResponseWriter, r *http.Request, route 
 		return
 	}
 
-	zipPath := fmt.Sprintf("%s/000.zip", archiveLog.FolderPath)
+	zipPath := archiveLog.FolderPath + "/000.zip"
 	rc, err := s.zipReader.OpenEntry(zipPath, "checkpoint")
 	if err != nil {
-		if err == ErrNotFound {
+		if errors.Is(err, ErrNotFound) {
 			http.NotFound(w, r)
 			return
 		}
-		if err == ErrZipTemporarilyUnavailable {
+		if errors.Is(err, ErrZipTemporarilyUnavailable) {
 			http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
 			return
 		}
@@ -211,14 +212,14 @@ func (s *Server) handleLogV3JSON(w http.ResponseWriter, r *http.Request, route R
 		return
 	}
 
-	zipPath := fmt.Sprintf("%s/000.zip", archiveLog.FolderPath)
+	zipPath := archiveLog.FolderPath + "/000.zip"
 	rc, err := s.zipReader.OpenEntry(zipPath, "log.v3.json")
 	if err != nil {
-		if err == ErrNotFound {
+		if errors.Is(err, ErrNotFound) {
 			http.NotFound(w, r)
 			return
 		}
-		if err == ErrZipTemporarilyUnavailable {
+		if errors.Is(err, ErrZipTemporarilyUnavailable) {
 			http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
 			return
 		}
@@ -262,11 +263,11 @@ func (s *Server) handleHashTile(w http.ResponseWriter, r *http.Request, route Ro
 	zipPath := fmt.Sprintf("%s/%03d.zip", archiveLog.FolderPath, zipIndex)
 	rc, err := s.zipReader.OpenEntry(zipPath, route.EntryPath)
 	if err != nil {
-		if err == ErrNotFound {
+		if errors.Is(err, ErrNotFound) {
 			http.NotFound(w, r)
 			return
 		}
-		if err == ErrZipTemporarilyUnavailable {
+		if errors.Is(err, ErrZipTemporarilyUnavailable) {
 			http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
 			return
 		}
@@ -310,11 +311,11 @@ func (s *Server) handleDataTile(w http.ResponseWriter, r *http.Request, route Ro
 	zipPath := fmt.Sprintf("%s/%03d.zip", archiveLog.FolderPath, zipIndex)
 	rc, err := s.zipReader.OpenEntry(zipPath, route.EntryPath)
 	if err != nil {
-		if err == ErrNotFound {
+		if errors.Is(err, ErrNotFound) {
 			http.NotFound(w, r)
 			return
 		}
-		if err == ErrZipTemporarilyUnavailable {
+		if errors.Is(err, ErrZipTemporarilyUnavailable) {
 			http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
 			return
 		}
@@ -349,14 +350,14 @@ func (s *Server) handleIssuer(w http.ResponseWriter, r *http.Request, route Rout
 	}
 
 	// Issuers are in 000.zip
-	zipPath := fmt.Sprintf("%s/000.zip", archiveLog.FolderPath)
+	zipPath := archiveLog.FolderPath + "/000.zip"
 	rc, err := s.zipReader.OpenEntry(zipPath, route.EntryPath)
 	if err != nil {
-		if err == ErrNotFound {
+		if errors.Is(err, ErrNotFound) {
 			http.NotFound(w, r)
 			return
 		}
-		if err == ErrZipTemporarilyUnavailable {
+		if errors.Is(err, ErrZipTemporarilyUnavailable) {
 			http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
 			return
 		}
@@ -426,11 +427,12 @@ func (s *Server) logRequest(r *http.Request, route Route, statusCode int, durati
 		attrs = append(attrs, "x_forwarded_proto", fwdProto)
 	}
 
-	if statusCode >= 500 {
+	switch {
+	case statusCode >= 500:
 		s.logger.Error("HTTP request", attrs...)
-	} else if statusCode >= 400 {
+	case statusCode >= 400:
 		s.logger.Warn("HTTP request", attrs...)
-	} else {
+	default:
 		s.logger.Info("HTTP request", attrs...)
 	}
 }

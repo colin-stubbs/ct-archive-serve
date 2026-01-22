@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -132,7 +133,7 @@ func (b *MonitorJSONBuilder) checkHasIssuers(zipPath string) (bool, error) {
 // The publicBaseURL is used to set submission_url and monitoring_url per spec.md FR-006.
 func (b *MonitorJSONBuilder) BuildSnapshot(publicBaseURL string) (*MonitorJSONSnapshot, error) {
 	if b.archiveIndex == nil {
-		return nil, fmt.Errorf("archive index not initialized")
+		return nil, errors.New("archive index not initialized")
 	}
 
 	snap := b.archiveIndex.GetAllLogs()
@@ -146,7 +147,7 @@ func (b *MonitorJSONBuilder) BuildSnapshot(publicBaseURL string) (*MonitorJSONSn
 
 	for _, logName := range logNames {
 		log := snap.Logs[logName]
-		zipPath := fmt.Sprintf("%s/000.zip", log.FolderPath)
+		zipPath := log.FolderPath + "/000.zip"
 
 		// Extract log.v3.json
 		logV3, err := b.extractLogV3JSON(zipPath)
