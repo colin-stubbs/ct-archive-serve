@@ -74,6 +74,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
 - **Invalid paths**: Requests containing `..` or other traversal attempts MUST NOT escape the archive namespace (respond `404`).
 - **Invalid tile encoding**: Requests with invalid `<L>`, invalid tile-index encoding, or invalid partial width MUST respond `404`.
   - `<L>` MUST be a base-10 integer in the inclusive range 0..255.
+  - Each `<N>` path segment MUST be either (a) exactly 4 characters: `x` followed by exactly 3 decimal digits (`0-9`), or (b) exactly 3 decimal digits (`0-9`) for the last segment only (per C2SP spec). However, `ct-archive-serve` accepts `x`-prefixed segments for all segments (including the last) for compatibility with `photocamera-archiver`. Any other form (including wrong length, non-decimal characters, or missing `x` prefix on non-last segments) MUST respond `404`.
   - For `.p/<W>` requests, `<W>` MUST be a base-10 integer in the inclusive range 1..255 (full tiles use the non-`.p/` form).
 - **Invalid issuer fingerprint**: For `/<log>/issuer/<fingerprint>`, `<fingerprint>` MUST be a non-empty lowercase hex string (`0-9a-f`). Any other form (including uppercase hex) MUST respond `404`.
 - **Missing archive zips**: If the archive directory is missing required zip(s) for a given request, the server MUST respond `404`.
@@ -184,17 +185,17 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
       - for level 1 tiles: `zipIndex = N / 256`
       - for level 2 tiles: `zipIndex = N`
   - For \(L \ge 3\), `photocamera-archiver` MAY include those tiles in every zip, so `ct-archive-serve` MUST serve them from a preferred “shared metadata” zip (prefer `000.zip` when present; otherwise the lowest available zip part).
-- **FR-008a**: Tile indices in request paths MUST use the standard tlog "groups-of-three" decimal encoding (to avoid huge single directories and to match common Static-CT clients):
+- **FR-008a**: Tile indices in request paths MUST use the C2SP decimal "groups-of-three" encoding (to avoid huge single directories and to match the format used by `photocamera-archiver`):
   - For both hash tiles and data tiles, `<N>` in the request path encodes a non-negative integer tile index \(N\) using one or more path segments.
-  - **Encoding**: Convert \(N\) to an unsigned decimal string, left-pad with `0` so the total length is a multiple of 3 digits, then split into 3-digit groups separated by `/`.
-    - Examples: \(N=0\) -> `000`; \(N=1\) -> `001`; \(N=1234\) -> `001/234`; \(N=1234567\) -> `001/234/567`
+  - **Encoding**: Convert \(N\) to an unsigned decimal string, left-pad with `0` so the total length is a multiple of 3 decimal digits, then split into 3-digit groups. All but the last path element MUST begin with an `x` per C2SP spec, but `ct-archive-serve` accepts `x` on all segments for compatibility with `photocamera-archiver`'s output. Segments are separated by `/`.
+    - Examples: \(N=0\) -> `x000`; \(N=1\) -> `x001`; \(N=5\) -> `x005`; \(N=466\) -> `x001/x234` (or `x001/x234` per spec, but `x001/x234` is also accepted); \(N=1234567\) -> `x001/x234/067` (per spec) or `x001/x234/x067` (accepted for compatibility)
   - **Full tile request forms**:
-    - Hash: `GET /<log>/tile/<L>/<N>` where `<N>` is the multi-segment groups-of-three path
-    - Data: `GET /<log>/tile/data/<N>` where `<N>` is the multi-segment groups-of-three path
-  - **Partial tile request forms**: The `.p/<W>` suffix applies to the final 3-digit `<N>` segment:
+    - Hash: `GET /<log>/tile/<L>/<N>` where `<N>` is the multi-segment decimal groups-of-three path
+    - Data: `GET /<log>/tile/data/<N>` where `<N>` is the multi-segment decimal groups-of-three path
+  - **Partial tile request forms**: The `.p/<W>` suffix applies to the final `<N>` segment:
     - Hash: `GET /<log>/tile/<L>/<N>.p/<W>`
     - Data: `GET /<log>/tile/data/<N>.p/<W>`
-  - **Decoding/validation**: Each `<N>` path segment MUST be exactly 3 ASCII digits (`0-9`). Any other form MUST be rejected as invalid and return `404` (see Edge Cases).
+  - **Decoding/validation**: Each `<N>` path segment MUST be either (a) exactly 4 characters: `x` followed by exactly 3 decimal digits (`0-9`), or (b) exactly 3 decimal digits (`0-9`) for the last segment only (per C2SP spec). However, `ct-archive-serve` accepts `x`-prefixed segments for all segments (including the last) for compatibility with `photocamera-archiver`. Any other form MUST be rejected as invalid and return `404` (see Edge Cases).
 - **FR-009**: `ct-archive-serve` MUST return `404` for missing entries and invalid paths, and MUST NOT allow path traversal.
   - For supported endpoints under `/<log>/...`, `ct-archive-serve` MUST treat the path suffix after `/<log>/` as the **zip entry name** to be served (relative to the zip root), without rewriting or synthesis. Examples:
     - `GET /<log>/checkpoint` serves zip entry `checkpoint`

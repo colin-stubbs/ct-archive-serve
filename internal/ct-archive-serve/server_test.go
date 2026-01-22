@@ -126,6 +126,7 @@ func TestPublicBaseURL_UntrustedSource_UsesHost(t *testing.T) {
 func TestPublicBaseURL_TrustedSource_UsesXForwarded(t *testing.T) {
 	t.Parallel()
 
+	//nolint:errcheck // Test helper with known-good value
 	trusted, _ := netip.ParsePrefix("127.0.0.1/32")
 	cfg := Config{
 		ArchivePath:          "/tmp/test",
@@ -151,6 +152,7 @@ func TestPublicBaseURL_TrustedSource_UsesXForwarded(t *testing.T) {
 func TestPublicBaseURL_TrustedSource_NoXForwarded_UsesHost(t *testing.T) {
 	t.Parallel()
 
+	//nolint:errcheck // Test helper with known-good value
 	trusted, _ := netip.ParsePrefix("127.0.0.1/32")
 	cfg := Config{
 		ArchivePath:          "/tmp/test",
@@ -174,6 +176,7 @@ func TestPublicBaseURL_TrustedSource_NoXForwarded_UsesHost(t *testing.T) {
 func TestPublicBaseURL_CommaSeparated_FirstNonEmpty(t *testing.T) {
 	t.Parallel()
 
+	//nolint:errcheck // Test helper with known-good value
 	trusted, _ := netip.ParsePrefix("127.0.0.1/32")
 	cfg := Config{
 		ArchivePath:          "/tmp/test",
@@ -199,6 +202,7 @@ func TestPublicBaseURL_CommaSeparated_FirstNonEmpty(t *testing.T) {
 func TestPublicBaseURL_SchemeLowercased(t *testing.T) {
 	t.Parallel()
 
+	//nolint:errcheck // Test helper with known-good value
 	trusted, _ := netip.ParsePrefix("127.0.0.1/32")
 	cfg := Config{
 		ArchivePath:          "/tmp/test",
@@ -394,7 +398,7 @@ func TestServer_HandleHashTile_200(t *testing.T) {
 	// Create zip with hash tile at level 0, index 0 (should be in 000.zip)
 	zipPath := filepath.Join(logFolder, "000.zip")
 	mustCreateZip(t, zipPath, map[string][]byte{
-		"tile/0/000": []byte("hash tile data"),
+		"tile/0/x000": []byte("hash tile data"),
 	})
 
 	cfg := Config{
@@ -414,12 +418,12 @@ func TestServer_HandleHashTile_200(t *testing.T) {
 	zr := NewZipReader(zic)
 	server := NewServer(cfg, logger, metrics, archiveIndex, zr, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/test_log/tile/0/000", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test_log/tile/0/x000", nil)
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("GET /test_log/tile/0/000 status = %d, want %d", w.Code, http.StatusOK)
+		t.Errorf("GET /test_log/tile/0/x000 status = %d, want %d", w.Code, http.StatusOK)
 	}
 	if ct := w.Header().Get("Content-Type"); ct != "application/octet-stream" {
 		t.Errorf("Content-Type = %q, want %q", ct, "application/octet-stream")
@@ -441,7 +445,7 @@ func TestServer_HandleDataTile_200(t *testing.T) {
 	// Create zip with data tile at index 0 (should be in 000.zip)
 	zipPath := filepath.Join(logFolder, "000.zip")
 	mustCreateZip(t, zipPath, map[string][]byte{
-		"tile/data/000": []byte("data tile data"),
+		"tile/data/x000": []byte("data tile data"),
 	})
 
 	cfg := Config{
@@ -461,12 +465,12 @@ func TestServer_HandleDataTile_200(t *testing.T) {
 	zr := NewZipReader(zic)
 	server := NewServer(cfg, logger, metrics, archiveIndex, zr, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/test_log/tile/data/000", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test_log/tile/data/x000", nil)
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("GET /test_log/tile/data/000 status = %d, want %d", w.Code, http.StatusOK)
+		t.Errorf("GET /test_log/tile/data/x000 status = %d, want %d", w.Code, http.StatusOK)
 	}
 	if ct := w.Header().Get("Content-Type"); ct != "application/octet-stream" {
 		t.Errorf("Content-Type = %q, want %q", ct, "application/octet-stream")
@@ -488,7 +492,7 @@ func TestServer_HandleHashTile_Partial_200(t *testing.T) {
 	// Create zip with partial hash tile
 	zipPath := filepath.Join(logFolder, "000.zip")
 	mustCreateZip(t, zipPath, map[string][]byte{
-		"tile/0/000.p/128": []byte("partial tile data"),
+		"tile/0/x000.p/128": []byte("partial tile data"),
 	})
 
 	cfg := Config{
@@ -508,12 +512,12 @@ func TestServer_HandleHashTile_Partial_200(t *testing.T) {
 	zr := NewZipReader(zic)
 	server := NewServer(cfg, logger, metrics, archiveIndex, zr, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/test_log/tile/0/000.p/128", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test_log/tile/0/x000.p/128", nil)
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("GET /test_log/tile/0/000.p/128 status = %d, want %d", w.Code, http.StatusOK)
+		t.Errorf("GET /test_log/tile/0/x000.p/128 status = %d, want %d", w.Code, http.StatusOK)
 	}
 	if body := w.Body.String(); body != "partial tile data" {
 		t.Errorf("body = %q, want %q", body, "partial tile data")

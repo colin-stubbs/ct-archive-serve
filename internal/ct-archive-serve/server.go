@@ -146,6 +146,7 @@ func (s *Server) handleMonitorJSON(w http.ResponseWriter, r *http.Request) {
 		// Refresh failure behavior per FR-006: return 503
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
+		//nolint:errcheck // If Write fails after WriteHeader, there's nothing we can do
 		_, _ = w.Write([]byte(`{"error":"temporarily unavailable"}`))
 		return
 	}
@@ -489,9 +490,7 @@ func (s *Server) derivePublicBaseURL(r *http.Request) string {
 	scheme = strings.ToLower(scheme)
 
 	return scheme + "://" + host
-}
-
-// firstNonEmptyAfterTrim returns the first non-empty element after trimming ASCII whitespace.
+}// firstNonEmptyAfterTrim returns the first non-empty element after trimming ASCII whitespace.
 func firstNonEmptyAfterTrim(elems []string) string {
 	for _, elem := range elems {
 		trimmed := strings.TrimSpace(elem)

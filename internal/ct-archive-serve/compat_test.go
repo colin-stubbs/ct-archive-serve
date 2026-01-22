@@ -29,8 +29,8 @@ func TestCompatibility_SmokeTest(t *testing.T) {
 	mustCreateZip(t, zipPath, map[string][]byte{
 		"checkpoint":        []byte("test checkpoint"),
 		"log.v3.json":       []byte(`{"description":"Test Log","log_id":"abc123","key":"def456","mmd":86400,"log_type":"prod","state":{}}`),
-		"tile/0/000":        []byte("hash tile"),
-		"tile/data/000":     []byte("data tile"),
+		"tile/0/x000":       []byte("hash tile"),
+		"tile/data/x000":    []byte("data tile"),
 		"issuer/abc123def": []byte("cert data"),
 	})
 
@@ -115,12 +115,12 @@ func TestCompatibility_SmokeTest(t *testing.T) {
 
 	// Test /<log>/tile/<L>/<N>
 	t.Run("hash_tile", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/test_log/tile/0/000", nil)
+		req := httptest.NewRequest(http.MethodGet, "/test_log/tile/0/x000", nil)
 		w := httptest.NewRecorder()
 		server.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
-			t.Errorf("GET /test_log/tile/0/000 status = %d, want %d", w.Code, http.StatusOK)
+			t.Errorf("GET /test_log/tile/0/x000 status = %d, want %d", w.Code, http.StatusOK)
 		}
 		if body := w.Body.String(); body != "hash tile" {
 			t.Errorf("body = %q, want %q", body, "hash tile")
@@ -129,12 +129,12 @@ func TestCompatibility_SmokeTest(t *testing.T) {
 
 	// Test /<log>/tile/data/<N>
 	t.Run("data_tile", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/test_log/tile/data/000", nil)
+		req := httptest.NewRequest(http.MethodGet, "/test_log/tile/data/x000", nil)
 		w := httptest.NewRecorder()
 		server.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
-			t.Errorf("GET /test_log/tile/data/000 status = %d, want %d", w.Code, http.StatusOK)
+			t.Errorf("GET /test_log/tile/data/x000 status = %d, want %d", w.Code, http.StatusOK)
 		}
 		if body := w.Body.String(); body != "data tile" {
 			t.Errorf("body = %q, want %q", body, "data tile")

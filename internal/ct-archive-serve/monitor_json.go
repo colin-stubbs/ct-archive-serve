@@ -89,7 +89,12 @@ func (b *MonitorJSONBuilder) GetSnapshot() *MonitorJSONSnapshot {
 	if val == nil {
 		return nil
 	}
-	return val.(*MonitorJSONSnapshot)
+	snap, ok := val.(*MonitorJSONSnapshot)
+	if !ok {
+		// This should never happen - atomic.Value only stores *MonitorJSONSnapshot
+		panic("monitor JSON builder: invalid type in atomic.Value")
+	}
+	return snap
 }
 
 // extractLogV3JSON extracts and parses log.v3.json from a zip part.
@@ -258,9 +263,7 @@ func (b *MonitorJSONBuilder) GetSnapshotForRequest(publicBaseURL string) *Monito
 	snap := b.GetSnapshot()
 	if snap == nil || snap.LastError != nil {
 		return snap // Return as-is (will result in 503)
-	}
-
-	// Clone snapshot and update URLs per request
+	}	// Clone snapshot and update URLs per request
 	clone := *snap
 	if len(clone.Operators) > 0 && len(clone.Operators[0].TiledLogs) > 0 {
 		clone.Operators = make([]MonitorJSONOperator, len(snap.Operators))

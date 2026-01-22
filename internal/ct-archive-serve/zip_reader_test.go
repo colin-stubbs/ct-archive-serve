@@ -62,6 +62,7 @@ func TestZipReader_OpenEntry_TemporarilyUnavailable(t *testing.T) {
 
 	root := t.TempDir()
 	zipPath := filepath.Join(root, "000.zip")
+	//nolint:errcheck // Test helper: intentionally creating invalid zip for testing
 	_ = os.WriteFile(zipPath, []byte("not-a-zip"), 0o600)
 
 	zic := NewZipIntegrityCache(5*time.Minute, time.Now, nil, nil)

@@ -19,9 +19,14 @@ help:
 	@echo "  clean                 Clean up build artifacts"
 
 clean:
-	# agents often seem to build a binary here
+	@echo "🧹 Cleaning up build artifacts..."
 	rm -fv ./ct-archive-serve
 	rm -fv ./bin/ct-archive-serve
+	@echo "✅ Build artifacts cleaned up"
+	@echo "🧹 Cleaning up qBittorrent config and feed content..."
+	find config/ -type f ! -name .gitkeep ! -name qBittorrent.conf ! -name feeds.json -exec rm -fv {} \;
+	@echo "✅ qBittorrent config and feed content cleaned up"
+	@echo "✅ Cleanup completed"
 
 test:
 	go test ./...

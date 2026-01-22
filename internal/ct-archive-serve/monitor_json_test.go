@@ -60,7 +60,7 @@ func TestMonitorSnapshotBuilder_HasIssuers_True(t *testing.T) {
 		"log.v3.json":   []byte(`{"description":"Test"}`),
 		"issuer/abc123": []byte("cert data"),
 		"issuer/def456": []byte("cert data"),
-		"tile/0/000":    []byte("tile data"),
+		"tile/0/x000":   []byte("tile data"),
 	})
 
 	zic := NewZipIntegrityCache(5*time.Minute, time.Now, nil, nil)

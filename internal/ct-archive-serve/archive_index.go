@@ -83,7 +83,15 @@ func (ai *ArchiveIndex) LookupLog(log string) (ArchiveLog, bool) {
 	if ai == nil {
 		return ArchiveLog{}, false
 	}
-	snap := ai.snap.Load().(ArchiveSnapshot)
+	val := ai.snap.Load()
+	if val == nil {
+		return ArchiveLog{}, false
+	}
+	snap, ok := val.(ArchiveSnapshot)
+	if !ok {
+		// This should never happen - atomic.Value only stores ArchiveSnapshot
+		panic("archive index: invalid type in atomic.Value")
+	}
 	l, ok := snap.Logs[log]
 	return l, ok
 }
@@ -180,7 +188,12 @@ func (ai *ArchiveIndex) GetAllLogs() ArchiveSnapshot {
 	if val == nil {
 		return ArchiveSnapshot{Logs: make(map[string]ArchiveLog)}
 	}
-	return val.(ArchiveSnapshot)
+	snap, ok := val.(ArchiveSnapshot)
+	if !ok {
+		// This should never happen - atomic.Value only stores ArchiveSnapshot
+		panic("archive index: invalid type in atomic.Value")
+	}
+	return snap
 }
 
 func (ai *ArchiveIndex) refreshOnce() {

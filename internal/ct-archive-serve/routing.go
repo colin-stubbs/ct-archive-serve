@@ -1,6 +1,7 @@
 package ctarchiveserve
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -226,18 +227,49 @@ func parseTileIndexAndPartial(parts []string) (tileIndexInfo, bool) {
 	}, true
 }
 
+// decodeTlogIndexSegments decodes C2SP tile index segments per tlog-tiles.md.
+// Segments are zero-padded 3-digit decimal path elements. All but the last
+// path element MUST begin with an 'x' per spec, but we accept 'x' on all
+// segments for compatibility with photocamera-archiver.
+// Example: ["x001", "x234", "067"] decodes to 1*1000*1000 + 234*1000 + 67 = 1,234,067
+// Example: ["x005", "482"] decodes to 5*1000 + 482 = 5482
 func decodeTlogIndexSegments(segs []string) (uint64, error) {
+	if len(segs) == 0 {
+		return 0, strconv.ErrSyntax
+	}
 	var n uint64
-	for _, s := range segs {
-		if len(s) != 3 {
+	for i, s := range segs {
+		isLast := i == len(segs)-1
+		var digits string
+		
+		// All but the last segment must have 'x' prefix per spec
+		// But accept 'x' on all segments for photocamera-archiver compatibility
+		if len(s) == 4 && s[0] == 'x' {
+			digits = s[1:]
+		} else if len(s) == 3 && isLast {
+			// Last segment may omit 'x' per spec
+			digits = s
+		} else {
 			return 0, strconv.ErrSyntax
 		}
-		for i := 0; i < 3; i++ {
-			if s[i] < '0' || s[i] > '9' {
+		
+		// Validate: must be exactly 3 decimal digits (0-9)
+		if len(digits) != 3 {
+			return 0, strconv.ErrSyntax
+		}
+		for j := 0; j < 3; j++ {
+			if digits[j] < '0' || digits[j] > '9' {
 				return 0, strconv.ErrSyntax
 			}
 		}
-		g, _ := strconv.ParseUint(s, 10, 16)
+		
+		// Parse as decimal (base 10), not hex
+		g, err := strconv.ParseUint(digits, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("parse segment %q: %w", s, err)
+		}
+		
+		// Multiply by 1000 (decimal) for each segment position
 		if n > (math.MaxUint64-g)/1000 {
 			return 0, strconv.ErrRange
 		}
@@ -259,4 +291,3 @@ func isLowerHex(s string) bool {
 	}
 	return true
 }
-
