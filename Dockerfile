@@ -1,8 +1,14 @@
-FROM golang:1.25.5-bookworm AS build
+FROM docker.io/golang:1.25.6-bookworm AS build
 
 WORKDIR /src
 
-COPY go.mod ./
+# Copy go.mod and go.sum first for better layer caching
+COPY go.mod go.sum ./
+
+# Download dependencies (cached layer if go.mod/go.sum unchanged)
+RUN go mod download
+
+# Copy source code
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 

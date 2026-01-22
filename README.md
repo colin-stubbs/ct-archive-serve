@@ -22,18 +22,28 @@ This repo uses `.specify/` + `specs/<feature>/` for spec-driven development.
 
 The `.specify/scripts/bash/check-prerequisites.sh` helper locates the active spec directory based on the **numeric branch prefix** (e.g. branch `001-...` maps to `specs/001-*`).
 
-## Development (placeholder)
+## Development
 
-Implementation code will live under:
+Implementation code lives under:
 
 ```text
-cmd/ct-archive-serve/
-internal/ct-archive-serve/
+cmd/ct-archive-serve/        # CLI entrypoint
+internal/ct-archive-serve/   # Core implementation
 ```
 
 Go version:
 
 - Target runtime: **Go 1.25.5+**
+
+### CLI Flags
+
+- `-h`, `--help`: Show help and exit
+- `-v`, `--verbose`: Enable verbose logging (log successful HTTP 2xx responses)
+- `-d`, `--debug`: Enable debug logging (slog DEBUG level)
+
+### Configuration
+
+All configuration is via environment variables. See `internal/ct-archive-serve/README.md` for details.
 
 CI/CD and artifacts:
 

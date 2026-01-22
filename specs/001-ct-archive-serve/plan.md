@@ -7,7 +7,7 @@
 
 ## Summary
 
-Implement `ct-archive-serve`, a native `net/http` server that serves Static-CT monitoring endpoints directly from `photocamera-archiver` zip archives on disk. This is intended for archives downloaded via torrents (e.g., `ct_<LOG_NAME>/NNN.zip` folders from `torrents.rss` in `geomys/ct-archive`) so CT readers can consume them without unzipping. The server listens on TCP/8080 by default and uses environment variables for configuration; CLI flags only toggle logging/help. `ct-archive-serve` is intended to be deployed behind a reverse proxy that provides TLS termination and rate limiting. If a required zip part exists but fails structural integrity checks (often because it is still downloading), requests return `503` until the zip part passes integrity verification.
+Implement `ct-archive-serve`, a native `net/http` server that serves Static-CT monitoring endpoints directly from `photocamera-archiver` zip archives on disk. This is intended for archives downloaded via torrents (e.g., `ct_<LOG_NAME>/NNN.zip` folders from `torrents.rss` in `geomys/ct-archive`) so CT readers can consume them without unzipping. The server listens on TCP/8080 by default and uses environment variables for configuration; CLI flags only toggle logging/help. `ct-archive-serve` is intended to be deployed behind a reverse proxy that provides TLS termination and rate limiting. If a required zip part exists but fails structural zip integrity checks (often because it is still downloading), requests return `503` until the zip part passes integrity verification.
 
 ## Technical Context
 
@@ -28,17 +28,17 @@ Implement `ct-archive-serve`, a native `net/http` server that serves Static-CT m
 - Must support multiple archived logs under a top-level archive directory
 - Must open and serve zip entries via seekable/random-access reads (avoid whole-zip decompression)
 - Must enforce HTTP method policy per `spec.md` `FR-002a` (support `GET`+`HEAD`; other methods to supported routes return `405` with `Allow: GET, HEAD`)
-- Must return `503` (temporarily unavailable) when a required zip part exists but fails basic zip integrity checks, with cached pass/fail results and a failed TTL per `spec.md` `FR-013`
+- Must return `503` (temporarily unavailable) when a required zip part exists but fails structural zip integrity checks, with cached pass/fail results and a failed TTL per `spec.md` `FR-013`
 **Scale/Scope**: 10s–100s of archives; archives may contain 1–1000 zip parts per log
 
 ## Implementation Notes
 
-- Zip entry serving will use Go standard library `archive/zip` with `zip.OpenReader` (or `zip.NewReader` over an `io.ReaderAt`) to ensure random-access reads via the central directory and streaming decompression of only the requested entry.
-- `/monitor.json` URL formation will derive the “public base URL” from the incoming request headers (`Host`, and `X-Forwarded-Host`/`X-Forwarded-Proto` **only when trusted** via `CT_HTTP_TRUSTED_SOURCES`), so the server does not need (and does not validate) a configured hostname/transport. When a chosen `X-Forwarded-*` value contains a comma-separated list, use the first non-empty element after trimming ASCII whitespace; scheme should be lowercased for URL construction.
-- `/monitor.json` output must be deterministic: `tiled_logs` should be sorted by `<log>` ascending per `spec.md` `FR-006`.
-- `/monitor.json` refresh failure behavior: if the most recent refresh attempt fails, `GET /monitor.json` returns `503` (temporarily unavailable) until the next successful refresh per `spec.md` `FR-006`.
-- Tile index `<N>` parsing must follow the tlog "groups-of-three" decimal path encoding per `spec.md` `FR-008a` (so `<N>` may span multiple path segments).
-- Zip integrity handling for torrent-downloaded archives will use a **structural validity check** (no decompression): open the zip with `zip.OpenReader` (central directory/EOCD) and then iterate entries and `Open()`/`Close()` each one to validate local file headers/offsets. Results are cached per `spec.md` `FR-013`; zip parts that fail integrity checks cause request handlers to return `503` until a re-check succeeds.
+- **Zip entry serving**: Use Go standard library `archive/zip` with `zip.OpenReader` (or `zip.NewReader` over an `io.ReaderAt`) to ensure random-access reads via the central directory and streaming decompression of only the requested entry.
+- **`/monitor.json` URL formation**: Derive the “public base URL” from incoming request headers. Use `Host` header by default. If `CT_HTTP_TRUSTED_SOURCES` is set (CSV of IP addresses/CIDR ranges), trust `X-Forwarded-Host`/`X-Forwarded-Proto` only when the request source IP matches a trusted source; otherwise, log but ignore these headers. For comma-separated `X-Forwarded-*` values, use the first non-empty element after trimming ASCII whitespace. Lowercase the scheme for URL construction. The server does not validate or require a configured hostname/transport.
+- **`/monitor.json` output**: Must be deterministic with `tiled_logs` sorted by `<log>` ascending per `spec.md` `FR-006`.
+- **`/monitor.json` refresh failure**: If the most recent refresh attempt fails, `GET /monitor.json` returns `503` (temporarily unavailable) until the next successful refresh per `spec.md` `FR-006`.
+- **Tile index parsing**: `<N>` must follow the tlog "groups-of-three" decimal path encoding per `spec.md` `FR-008a` (so `<N>` may span multiple path segments).
+- **Zip integrity verification**: For torrent-downloaded archives, use a structural validity check (no decompression): open the zip with `zip.OpenReader` (validates central directory/EOCD) and iterate entries, calling `Open()`/`Close()` on each to validate local file headers/offsets without reading entry bodies. Results are cached per `spec.md` `FR-013`; failed zip parts cause handlers to return `503` until a re-check succeeds.
 
 ## Performance Architecture (Extreme Load)
 
@@ -53,16 +53,21 @@ Implement `ct-archive-serve`, a native `net/http` server that serves Static-CT m
 ### Core components (internal/ct-archive-serve)
 
 - **ArchiveIndex**: in-memory index mapping `<log>` → archive folder path + known zip parts, refreshed periodically (`CT_ARCHIVE_REFRESH_INTERVAL`).
-- **ZipPartCache**: bounded cache (config: `CT_ZIP_CACHE_MAX_OPEN`) that retains open file handles and a prebuilt entry index for each zip part.
-- **ZipEntryIndex**: map-like structure created from the zip central directory (entry name → `*zip.File`/metadata) to make per-request lookup O(1) for an already-cached zip part.
-- **ZipIntegrityCache**: in-memory zip integrity results used to tolerate in-progress torrent downloads: a permanent "passed" set and a TTL "failed" set (`CT_ZIP_INTEGRITY_FAIL_TTL`, default 5m). When a required zip part fails integrity checks, requests return `503` (temporarily unavailable) per `spec.md` (`FR-013`).
+- **ZipIntegrityCache**: in-memory zip integrity results used to tolerate in-progress torrent downloads. Uses structural validity checks (central directory + local file headers, no decompression). Maintains a permanent "passed" set (until read failures evict entries) and a TTL "failed" set (`CT_ZIP_INTEGRITY_FAIL_TTL`, default 5m). When a required zip part fails integrity checks, requests return `503` (temporarily unavailable) per `spec.md` `FR-013`.
+- **ZipPartCache** (Phase 5 performance optimization): Bounded cache (config: `CT_ZIP_CACHE_MAX_OPEN`) that retains open file handles and a prebuilt entry index for each zip part. This avoids repeated central-directory parsing for hot zip parts. Baseline functionality (Phase 2-4) can work without this cache by opening zip parts on-demand, but `ZipPartCache` is required to meet `SC-006` performance goals under extreme load.
+- **ZipEntryIndex**: Map-like structure created from the zip central directory (entry name → `*zip.File`/metadata) to make per-request lookup O(1) for an already-cached zip part. This is created as part of `ZipPartCache` when a zip part is cached.
+
+**Component responsibilities clarification**:
+- **ZipIntegrityCache**: Validates zip structural integrity (central directory + local headers). Returns pass/fail with caching. Used before attempting to read from a zip part. Required for baseline functionality (Phase 2).
+- **ZipPartCache**: Performance optimization (Phase 5) that caches open file handles and pre-parsed zip readers to avoid repeated `zip.OpenReader` calls for hot zip parts. Works in conjunction with `ZipEntryIndex`.
+- **ZipEntryIndex**: O(1) lookup structure (entry name → `*zip.File`) created from a zip's central directory. Created when a zip part is added to `ZipPartCache`. Not a standalone component; part of the `ZipPartCache` optimization.
 
 ### Request hot path (intended)
 
 - Parse + validate request path
 - Lookup `<log>` in `ArchiveIndex` (no filesystem traversal)
 - Select zip part for the asset (math for tiles/data; prefer `000.zip` for shared metadata)
-- Get zip part from `ZipPartCache` (open+index on miss; reuse on hit; evict LRU on pressure)
+- Get zip part from `ZipPartCache` (open+index on miss; reuse on hit; evict LRU on pressure) **[Phase 5: baseline opens zip on-demand]**
 - Stream-decompress only the requested entry to the HTTP response writer
 
 ## Performance Validation Approach

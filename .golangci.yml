@@ -22,3 +22,28 @@ linters:
     - unused
     - gosec
 
+issues:
+  exclude-rules:
+    # G304 (file inclusion via variable): Safe in tests and zip_cache.go where paths are validated
+    - path: internal/ct-archive-serve/monitor_json_test\.go$
+      linters:
+        - gosec
+      text: "G304"
+    - path: internal/ct-archive-serve/perf_bench_test\.go$
+      linters:
+        - gosec
+      text: "G304"
+    - path: internal/ct-archive-serve/zip_cache\.go$
+      linters:
+        - gosec
+      text: "G304"
+    # G115 (integer overflow): Bounds checks ensure safety in archive_index.go and routing.go
+    - path: internal/ct-archive-serve/archive_index\.go$
+      linters:
+        - gosec
+      text: "G115"
+    - path: internal/ct-archive-serve/routing\.go$
+      linters:
+        - gosec
+      text: "G115"
+

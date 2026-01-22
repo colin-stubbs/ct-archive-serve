@@ -1,4 +1,10 @@
-.PHONY: help test lint security build-ct-archive-serve
+.PHONY: help test lint security build-ct-archive-serve build-container build-container-multi build clean
+
+# Configuration for local builds
+IMAGE_NAME ?= colin-stubbs/ct-archive-serve
+TAG ?= latest
+REGISTRY ?= ghcr.io
+REGISTRY_IMAGE ?= $(REGISTRY)/$(IMAGE_NAME)
 
 BIN_DIR ?= bin
 
@@ -7,7 +13,15 @@ help:
 	@echo "  test                  Run unit tests"
 	@echo "  lint                  Run golangci-lint"
 	@echo "  security              Run govulncheck and trivy (if installed)"
-	@echo "  build-ct-archive-serve Build ct-archive-serve binary"
+	@echo "  build                 Build ct-archive-serve binary"
+	@echo "  build-container       Build Docker image"
+	@echo "  build-container-multi Build multi-platform Docker image"
+	@echo "  clean                 Clean up build artifacts"
+
+clean:
+	# agents often seem to build a binary here
+	rm -fv ./ct-archive-serve
+	rm -fv ./bin/ct-archive-serve
 
 test:
 	go test ./...
@@ -22,4 +36,22 @@ security:
 build-ct-archive-serve:
 	@mkdir -p "$(BIN_DIR)"
 	go build -o "$(BIN_DIR)/ct-archive-serve" ./cmd/ct-archive-serve
+
+build-container:
+	@echo "🔨 Building Docker image..."
+	docker compose build
+	@echo "✅ Build completed"
+
+build-container-multi:
+	@echo "🔨 Building multi-platform Docker image..."
+	docker buildx create --use --name multi-builder || true
+	docker buildx build --platform linux/amd64,linux/arm64 -t $(IMAGE_NAME):$(TAG) --load .
+	@echo "✅ Multi-platform build completed"
+
+# Build commands
+build:
+	@echo "🔨 Building ct-archive-serve..."
+	make build-ct-archive-serve
+	@echo "🔨 Building container..."
+	make build-container-multi
 

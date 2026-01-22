@@ -8,6 +8,51 @@
 - Updated `specs/001-ct-archive-serve/plan.md` to explicitly describe `CT_HTTP_TRUSTED_SOURCES` gating for `X-Forwarded-*` during `/monitor.json` URL formation
 - Updated `specs/001-ct-archive-serve/spec.md` Edge Cases to specify issuer `<fingerprint>` validation (non-empty lowercase hex; otherwise `404`)
 
+* 2026-01-22 - Complete Phase 4-5 implementation: tile/issuer handlers, request logging, compatibility tests, ZipPartCache performance optimization
+
+- Implemented hash tile handler `/<log>/tile/<L>/<N>[.p/<W>]` (T031): supports all tile levels, partial tiles, correct zip selection math
+- Implemented data tile handler `/<log>/tile/data/<N>[.p/<W>]` (T032): correct zip selection, partial tile support
+- Implemented issuer handler `/<log>/issuer/<fingerprint>` (T034): validation, correct Content-Type, 404/503 handling
+- Implemented HTTP request logging (T035): structured JSON logs, verbose mode for 2xx, always log non-2xx, includes X-Forwarded-* headers
+- Added compatibility smoke test (T036): verifies all major endpoints work correctly
+- Implemented ZipPartCache (T037-T038): bounded LRU cache for open zip handles and entry indices, avoids repeated central directory parsing
+- Added concurrent cache tests with race detection (T039): verifies thread-safety under concurrent access
+- Added performance benchmarks (T040): zip reader and cache benchmarks with pprof guidance
+- Updated internal README.md (T041): comprehensive documentation of env vars, routing, logging, metrics, performance tuning
+- Updated top-level README.md (T042): added CLI flags section, improved development documentation
+
+* 2026-01-21 - Implement Phase 2-3 core functionality: HTTP server, monitor.json, checkpoint/log.v3.json handlers
+
+- Implemented HTTP method policy enforcement (T017-T018): GET/HEAD support, 405 for unsupported methods, 404 for unknown routes
+- Implemented CLI flags and process wiring (T019): -h/--help, -v/--verbose, -d/--debug, HTTP server timeouts/limits configuration
+- Implemented publicBaseURL derivation (T020-T021): trusted-source gating, X-Forwarded-* header handling, comma-separated list parsing
+- Implemented monitor.json builder (T022-T025): extract log.v3.json, check has_issuers, deterministic sort, periodic refresh loop, 503 on refresh failure
+- Implemented zip selection math (T026-T027): hash tiles (L=0/1/2), data tiles, shared metadata (L>=3) selection
+- Implemented checkpoint and log.v3.json handlers (T028-T029): serve from 000.zip with correct Content-Type, 404/503 handling, HEAD support
+- Added GetAllLogs() method to ArchiveIndex for monitor.json building
+- Added SelectZipPart() method to ArchiveIndex for tile zip selection
+
+* 2026-01-21 - Clean up plan.md: reduce duplication and clarify implementation notes
+
+- Consolidated duplicate zip integrity descriptions across Summary, Constraints, Implementation Notes, and Core components sections
+- Clarified X-Forwarded-* header trust mechanism in Implementation Notes (explains `CT_HTTP_TRUSTED_SOURCES` IP matching)
+- Improved formatting and consistency in Implementation Notes section (added bold labels for each note)
+- Made zip integrity verification description more concise while maintaining clarity
+
+* 2026-01-21 - Enhance LoadConfig documentation with usage pattern
+
+- Enhanced `LoadConfig()` function documentation in `internal/ct-archive-serve/config.go` with detailed usage example, error handling guidance, and clarification on when to use it vs `parseConfigFromMap` for testing
+
+* 2026-01-21 - Recreate missing zip_reader.go; add public LoadConfig API
+
+- Recreated `internal/ct-archive-serve/zip_reader.go` with `NewZipReader` and `OpenEntry` implementation matching test API (fixes blocking tasks T015/T016/T031/T032/T038)
+- Added public `LoadConfig()` function in `internal/ct-archive-serve/config.go` for production use (reads from `os.LookupEnv`)
+
+* 2026-01-21 - Complete API requirements checklist; clarify archive layout and request→zip entry mapping
+
+- Updated `specs/001-ct-archive-serve/spec.md` to clarify: `NNN.zip` naming convention, startup refresh expectation for `/monitor.json`, tile level `<L>` bounds, and explicit request-suffix → zip-entry mapping for `/<log>/...` endpoints
+- Completed `specs/001-ct-archive-serve/checklists/api.md` (PR gate) with notes linking each checklist item to the relevant spec sections
+
 * 2026-01-21 - Clarify monitor.json refresh and log collision behavior; add observability tasks
 
 - Updated `spec.md` to define `/monitor.json` refresh failure behavior (`503` until the next successful refresh) and to define `<log>` collision handling as a startup configuration error

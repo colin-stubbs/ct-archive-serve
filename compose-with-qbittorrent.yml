@@ -1,8 +1,5 @@
 services:
   ct-archive-serve:
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: colin-stubbs/ct-archive-serve:latest
 
     ports:
@@ -12,9 +9,11 @@ services:
       # - "80:8080"
 
     environment:
+      - TZ=${TZ:-Etc/UTC}
+
       # Archive root inside the container (matches default in spec/tasks).
-      - CT_ARCHIVE_PATH=/var/log/ct/archive
-      - CT_ARCHIVE_FOLDER_PATTERN=ct_*
+      - CT_ARCHIVE_PATH=${CT_ARCHIVE_PATH:-/var/log/ct/archive}
+      - CT_ARCHIVE_FOLDER_PATTERN=${CT_ARCHIVE_FOLDER_PATTERN:-ct_*}
 
       # Optional: recommended when running behind a reverse proxy.
       #- CT_HTTP_TRUSTED_SOURCES="127.0.0.1/32"
@@ -23,3 +22,22 @@ services:
     volumes:
       # Put your downloaded `ct_*` folders under ./archive on the host. ct-archive-serve does not require more than read-only access.
       - ./archive:/var/log/ct/archive:ro
+
+  qbittorrent:
+    image: docker.io/qbittorrentofficial/qbittorrent-nox:latest
+    environment:
+      - TZ=${TZ:-Etc/UTC}
+      - QBT_LEGAL_NOTICE=${QBT_LEGAL_NOTICE:-confirm}
+      - PUID=65534
+      - PGID=65534
+      - TZ=Etc/UTC
+      - WEBUI_PORT=8080
+      - TORRENTING_PORT=6881
+    volumes:
+      - /path/to/your/config:/config
+      - /path/to/your/downloads:/downloads
+    ports:
+      - 8080:8080
+      - 6881:6881
+      - 6881:6881/udp
+    restart: unless-stopped
