@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -63,6 +64,10 @@ type MonitorJSONBuilder struct {
 	cfg          Config
 
 	snap atomic.Value // stores *MonitorJSONSnapshot
+
+	// refreshMu serializes refresh operations to prevent concurrent refreshes
+	// (e.g., if a refresh takes longer than the refresh interval)
+	refreshMu sync.Mutex
 }
 
 // NewMonitorJSONBuilder constructs a new MonitorJSONBuilder.
@@ -97,41 +102,83 @@ func (b *MonitorJSONBuilder) GetSnapshot() *MonitorJSONSnapshot {
 	return snap
 }
 
-// extractLogV3JSON extracts and parses log.v3.json from a zip part.
-func (b *MonitorJSONBuilder) extractLogV3JSON(zipPath string) (*LogV3Entry, error) {
-	rc, err := b.zipReader.OpenEntry(zipPath, "log.v3.json")
+// extractLogV3JSONAndCheckIssuers opens a zip part once and performs both operations:
+// extracts/parses log.v3.json and checks for issuer/ entries. This avoids opening
+// the same ZIP file twice, which is expensive for large ZIPs with many entries.
+func (b *MonitorJSONBuilder) extractLogV3JSONAndCheckIssuers(zipPath string) (*LogV3Entry, bool, error) {
+	if b.logger != nil {
+		b.logger.Debug("Opening zip file for log.v3.json extraction and issuer check", "zip_path", zipPath)
+	}
+	r, err := zip.OpenReader(zipPath)
 	if err != nil {
-		return nil, fmt.Errorf("open log.v3.json: %w", err)
+		return nil, false, fmt.Errorf("open zip: %w", err)
+	}
+	defer func() { _ = r.Close() }()
+
+	if b.logger != nil {
+		b.logger.Debug("Scanning zip entries", "zip_path", zipPath, "entry_count", len(r.File))
+	}
+
+	var logV3File *zip.File
+	hasIssuers := false
+
+	for _, f := range r.File {
+		if f.Name == "log.v3.json" {
+			logV3File = f
+		} else if strings.HasPrefix(f.Name, "issuer/") {
+			hasIssuers = true
+			if b.logger != nil {
+				b.logger.Debug("Found issuer entry", "zip_path", zipPath, "entry", f.Name)
+			}
+		}
+	}
+
+	if logV3File == nil {
+		return nil, hasIssuers, errors.New("log.v3.json not found in zip")
+	}
+
+	if b.logger != nil {
+		b.logger.Debug("Reading log.v3.json from zip", "zip_path", zipPath)
+	}
+	rc, err := logV3File.Open()
+	if err != nil {
+		return nil, hasIssuers, fmt.Errorf("open log.v3.json: %w", err)
 	}
 	defer func() { _ = rc.Close() }()
 
 	data, err := io.ReadAll(rc)
 	if err != nil {
-		return nil, fmt.Errorf("read log.v3.json: %w", err)
+		return nil, hasIssuers, fmt.Errorf("read log.v3.json: %w", err)
 	}
 
 	var entry LogV3Entry
 	if err := json.Unmarshal(data, &entry); err != nil {
-		return nil, fmt.Errorf("parse log.v3.json: %w", err)
+		return nil, hasIssuers, fmt.Errorf("parse log.v3.json: %w", err)
 	}
 
-	return &entry, nil
+	if b.logger != nil {
+		b.logger.Debug("Successfully extracted and parsed log.v3.json", "zip_path", zipPath)
+		if !hasIssuers {
+			b.logger.Debug("No issuer entries found", "zip_path", zipPath)
+		}
+	}
+	return &entry, hasIssuers, nil
+}
+
+// extractLogV3JSON extracts and parses log.v3.json from a zip part.
+//
+// Deprecated: Use extractLogV3JSONAndCheckIssuers to avoid opening ZIP twice.
+func (b *MonitorJSONBuilder) extractLogV3JSON(zipPath string) (*LogV3Entry, error) {
+	entry, _, err := b.extractLogV3JSONAndCheckIssuers(zipPath)
+	return entry, err
 }
 
 // checkHasIssuers checks if a zip part contains any issuer/ entries (metadata-only check).
+//
+// Deprecated: Use extractLogV3JSONAndCheckIssuers to avoid opening ZIP twice.
 func (b *MonitorJSONBuilder) checkHasIssuers(zipPath string) (bool, error) {
-	r, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return false, fmt.Errorf("open zip: %w", err)
-	}
-	defer func() { _ = r.Close() }()
-
-	for _, f := range r.File {
-		if strings.HasPrefix(f.Name, "issuer/") {
-			return true, nil
-		}
-	}
-	return false, nil
+	_, hasIssuers, err := b.extractLogV3JSONAndCheckIssuers(zipPath)
+	return hasIssuers, err
 }
 
 // BuildSnapshot builds a new monitor.json snapshot from the current archive index state.
@@ -143,6 +190,10 @@ func (b *MonitorJSONBuilder) BuildSnapshot(publicBaseURL string) (*MonitorJSONSn
 
 	snap := b.archiveIndex.GetAllLogs()
 
+	if b.logger != nil {
+		b.logger.Debug("Building monitor.json snapshot", "log_count", len(snap.Logs))
+	}
+
 	var tiledLogs []MonitorJSONTiledLog
 	logNames := make([]string, 0, len(snap.Logs))
 	for logName := range snap.Logs {
@@ -150,26 +201,27 @@ func (b *MonitorJSONBuilder) BuildSnapshot(publicBaseURL string) (*MonitorJSONSn
 	}
 	sort.Strings(logNames) // Deterministic sort per FR-006
 
-	for _, logName := range logNames {
+	for i, logName := range logNames {
 		log := snap.Logs[logName]
 		zipPath := log.FolderPath + "/000.zip"
 
-		// Extract log.v3.json
-		logV3, err := b.extractLogV3JSON(zipPath)
+		if b.logger != nil {
+			b.logger.Debug("Processing log for monitor.json", "log", logName, "progress", fmt.Sprintf("%d/%d", i+1, len(logNames)), "zip_path", zipPath)
+		}
+
+		// Extract log.v3.json and check for issuer entries in a single ZIP open
+		if b.logger != nil {
+			b.logger.Debug("Extracting log.v3.json and checking for issuer entries", "log", logName, "zip_path", zipPath)
+		}
+		logV3, hasIssuers, err := b.extractLogV3JSONAndCheckIssuers(zipPath)
 		if err != nil {
 			if b.logger != nil {
-				b.logger.Warn("Failed to extract log.v3.json", "log", logName, "error", err)
+				b.logger.Warn("Failed to extract log.v3.json or check issuers", "log", logName, "error", err)
 			}
 			continue // Skip this log
 		}
-
-		// Check has_issuers
-		hasIssuers, err := b.checkHasIssuers(zipPath)
-		if err != nil {
-			if b.logger != nil {
-				b.logger.Warn("Failed to check has_issuers", "log", logName, "error", err)
-			}
-			hasIssuers = false // Default to false on error
+		if b.logger != nil {
+			b.logger.Debug("Extracted log.v3.json and checked issuers", "log", logName, "description", logV3.Description, "has_issuers", hasIssuers)
 		}
 
 		// Build tiled log entry (remove url, add submission_url/monitoring_url per FR-006b)
@@ -187,6 +239,13 @@ func (b *MonitorJSONBuilder) BuildSnapshot(publicBaseURL string) (*MonitorJSONSn
 		}
 
 		tiledLogs = append(tiledLogs, tiledLog)
+		if b.logger != nil {
+			b.logger.Debug("Added log to monitor.json snapshot", "log", logName, "has_issuers", hasIssuers)
+		}
+	}
+
+	if b.logger != nil {
+		b.logger.Debug("Monitor.json snapshot build complete", "tiled_log_count", len(tiledLogs))
 	}
 
 	return &MonitorJSONSnapshot{
@@ -213,7 +272,13 @@ func (b *MonitorJSONBuilder) Start(ctx context.Context) {
 	}
 
 	// Initial refresh at startup (using placeholder URL; will be overridden per-request)
+	if b.logger != nil {
+		b.logger.Debug("Starting initial monitor.json refresh")
+	}
 	b.refreshOnce("http://placeholder")
+	if b.logger != nil {
+		b.logger.Debug("Initial monitor.json refresh completed")
+	}
 
 	// Periodic refresh loop
 	t := time.NewTicker(b.cfg.MonitorJSONRefreshInterval)
@@ -233,7 +298,11 @@ func (b *MonitorJSONBuilder) Start(ctx context.Context) {
 
 // refreshOnce attempts to build a new snapshot and update the atomic value.
 // On success, LastError is nil. On failure, LastError is set and the snapshot may be nil.
+// This method is protected by refreshMu to prevent concurrent refreshes.
 func (b *MonitorJSONBuilder) refreshOnce(publicBaseURL string) {
+	b.refreshMu.Lock()
+	defer b.refreshMu.Unlock()
+
 	snap, err := b.BuildSnapshot(publicBaseURL)
 	if err != nil {
 		if b.logger != nil {

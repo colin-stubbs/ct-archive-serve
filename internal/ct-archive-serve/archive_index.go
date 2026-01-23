@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -40,6 +41,10 @@ type ArchiveIndex struct {
 	metrics *Metrics
 
 	snap atomic.Value // stores ArchiveSnapshot
+
+	// refreshMu serializes refresh operations to prevent concurrent disk scans
+	// (e.g., if a refresh takes longer than the refresh interval)
+	refreshMu sync.Mutex
 }
 
 func NewArchiveIndex(cfg Config, logger *slog.Logger, metrics *Metrics) (*ArchiveIndex, error) {
@@ -50,9 +55,15 @@ func NewArchiveIndex(cfg Config, logger *slog.Logger, metrics *Metrics) (*Archiv
 		metrics: metrics,
 	}
 
-	snap, err := buildArchiveSnapshot(cfg, ai.readDir)
+	if logger != nil {
+		logger.Debug("Building initial archive snapshot", "archive_path", cfg.ArchivePath, "folder_pattern", cfg.ArchiveFolderPrefix+"*")
+	}
+	snap, err := buildArchiveSnapshot(cfg, ai.readDir, logger)
 	if err != nil {
 		return nil, err
+	}
+	if logger != nil {
+		logger.Debug("Archive snapshot built", "log_count", len(snap.Logs))
 	}
 	ai.snap.Store(snap)
 	ai.updateResourceMetrics(snap)
@@ -197,7 +208,10 @@ func (ai *ArchiveIndex) GetAllLogs() ArchiveSnapshot {
 }
 
 func (ai *ArchiveIndex) refreshOnce() {
-	snap, err := buildArchiveSnapshot(ai.cfg, ai.readDir)
+	ai.refreshMu.Lock()
+	defer ai.refreshMu.Unlock()
+
+	snap, err := buildArchiveSnapshot(ai.cfg, ai.readDir, ai.logger)
 	if err != nil {
 		if ai.logger != nil {
 			ai.logger.Error("archive refresh failed", "error", err)
@@ -220,7 +234,7 @@ func (ai *ArchiveIndex) updateResourceMetrics(snap ArchiveSnapshot) {
 	ai.metrics.SetArchiveDiscovered(logCount, zipPartCount)
 }
 
-func buildArchiveSnapshot(cfg Config, readDir func(string) ([]os.DirEntry, error)) (ArchiveSnapshot, error) {
+func buildArchiveSnapshot(cfg Config, readDir func(string) ([]os.DirEntry, error), logger *slog.Logger) (ArchiveSnapshot, error) {
 	if readDir == nil {
 		readDir = os.ReadDir
 	}
@@ -230,7 +244,12 @@ func buildArchiveSnapshot(cfg Config, readDir func(string) ([]os.DirEntry, error
 		return ArchiveSnapshot{}, fmt.Errorf("read archive path: %w", err)
 	}
 
+	if logger != nil {
+		logger.Debug("Scanning archive directory", "path", cfg.ArchivePath, "entry_count", len(entries))
+	}
+
 	logs := make(map[string]ArchiveLog)
+	discoveredCount := 0
 	for _, ent := range entries {
 		if !ent.IsDir() {
 			continue
@@ -238,6 +257,9 @@ func buildArchiveSnapshot(cfg Config, readDir func(string) ([]os.DirEntry, error
 
 		folderName := ent.Name()
 		if cfg.ArchiveFolderPrefix != "" && !strings.HasPrefix(folderName, cfg.ArchiveFolderPrefix) {
+			if logger != nil {
+				logger.Debug("Skipping directory (doesn't match pattern)", "folder", folderName, "pattern", cfg.ArchiveFolderPrefix+"*")
+			}
 			continue
 		}
 
@@ -252,9 +274,15 @@ func buildArchiveSnapshot(cfg Config, readDir func(string) ([]os.DirEntry, error
 		}
 
 		folderPath := filepath.Join(cfg.ArchivePath, folderName)
-		zipParts, err := discoverZipParts(folderPath)
+		if logger != nil {
+			logger.Debug("Discovering zip parts", "log", logName, "folder", folderPath)
+		}
+		zipParts, err := discoverZipParts(folderPath, logger)
 		if err != nil {
 			return ArchiveSnapshot{}, fmt.Errorf("discover zip parts for %q: %w", folderName, err)
+		}
+		if logger != nil {
+			logger.Debug("Discovered zip parts", "log", logName, "zip_parts", zipParts)
 		}
 
 		logs[logName] = ArchiveLog{
@@ -263,12 +291,17 @@ func buildArchiveSnapshot(cfg Config, readDir func(string) ([]os.DirEntry, error
 			FolderPath: folderPath,
 			ZipParts:   zipParts,
 		}
+		discoveredCount++
+	}
+
+	if logger != nil {
+		logger.Debug("Archive snapshot complete", "discovered_logs", discoveredCount)
 	}
 
 	return ArchiveSnapshot{Logs: logs}, nil
 }
 
-func discoverZipParts(folderPath string) ([]int, error) {
+func discoverZipParts(folderPath string, logger *slog.Logger) ([]int, error) {
 	ents, err := os.ReadDir(folderPath)
 	if err != nil {
 		return nil, fmt.Errorf("read zip parts directory: %w", err)
@@ -295,6 +328,9 @@ func discoverZipParts(folderPath string) ([]int, error) {
 			continue
 		}
 		out = append(out, n)
+		if logger != nil {
+			logger.Debug("Found zip part", "zip_file", name, "index", n, "folder", folderPath)
+		}
 	}
 
 	sort.Ints(out)

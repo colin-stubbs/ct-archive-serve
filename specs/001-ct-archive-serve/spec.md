@@ -142,6 +142,11 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
     - When responding `503`, the server SHOULD return `Content-Type: application/json` with a small error body (e.g., `{"error":"temporarily unavailable"}`) rather than a log list v3 document.
     - Once a subsequent refresh attempt succeeds, `ct-archive-serve` MUST resume serving `200` with the newly generated snapshot.
     - `ct-archive-serve` SHOULD attempt an initial refresh at startup and then refresh periodically on `CT_MONITOR_JSON_REFRESH_INTERVAL`; refresh work MUST NOT occur on the request hot path.
+  - **Refresh concurrency protection**:
+    - `ct-archive-serve` MUST serialize refresh operations using mutex protection to prevent concurrent refreshes (e.g., if a refresh takes longer than `CT_MONITOR_JSON_REFRESH_INTERVAL`, subsequent refresh attempts MUST wait for the in-progress refresh to complete rather than running concurrently).
+    - This protection applies to both `MonitorJSONBuilder` refresh operations and `ArchiveIndex` refresh operations to prevent resource waste (e.g., concurrent ZIP file opens, concurrent disk scans).
+  - **ZIP optimization for monitor.json building**:
+    - When building a monitor.json snapshot, `ct-archive-serve` MUST open each `000.zip` file only once per log to extract both `log.v3.json` and check for `issuer/` entries, rather than opening the same ZIP file twice. This optimization reduces startup time and resource usage when processing many logs with large ZIP files.
 
   Example minimal shape (illustrative only; values are placeholders — fields within each `tiled_logs[]` entry are sourced from `log.v3.json` and then adjusted per requirements):
 
@@ -262,6 +267,11 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
     - HTTP request logs MUST be emitted as structured JSON and include at least: request path, derived `<log>` (when applicable), selected zip part (when applicable), status code, and duration
     - HTTP request logs MUST include `X-Forwarded-Host` and `X-Forwarded-Proto` values when present, even when ignored for URL formation due to untrusted source IPs
     - HTTP request logs for successful responses (HTTP 2xx) MUST be emitted only when `-v/--verbose` is enabled; non-2xx responses MUST be logged regardless of `-v`
+  - **Startup debug logging**: When `-d/--debug` is enabled, the server MUST emit detailed debug logs during startup phases, including:
+    - Archive discovery progress (scanning directory, finding zip parts, log count)
+    - Monitor.json snapshot building progress (processing each log, extracting `log.v3.json`, checking for issuer entries)
+    - HTTP listener establishment (confirming TCP port binding)
+    - These debug logs aid in diagnosing startup stalling issues and performance bottlenecks
 - **NFR-011**: `ct-archive-serve` MUST meet repository code-quality and security gates for Go code:
   - `golangci-lint` MUST pass for `ct-archive-serve` changes (linting + basic security checks configured via `.golangci.yml`)
   - `govulncheck` MUST be run as part of security evaluation for `ct-archive-serve` changes

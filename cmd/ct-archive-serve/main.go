@@ -84,34 +84,39 @@ func main() {
 	debugEnabled := *debug || *debugLong
 
 	// Load configuration from environment
-	cfg, err := ctarchiveserve.LoadConfig()
-	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
-	}
-
-	// Initialize logger
 	logger := ctarchiveserve.NewLogger(ctarchiveserve.LoggerOptions{
 		Verbose: verboseEnabled,
 		Debug:   debugEnabled,
 	})
+	logger.Debug("Loading configuration from environment")
+	cfg, err := ctarchiveserve.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+	logger.Debug("Configuration loaded", "archive_path", cfg.ArchivePath, "folder_pattern", cfg.ArchiveFolderPattern)
 
 	// Initialize metrics
+	logger.Debug("Initializing metrics")
 	reg := prometheus.NewRegistry()
 	metrics := ctarchiveserve.NewMetrics(reg)
 
 	// Initialize archive index
+	logger.Debug("Initializing archive index", "archive_path", cfg.ArchivePath)
 	archiveIndex, err := ctarchiveserve.NewArchiveIndex(cfg, logger, metrics)
 	if err != nil {
 		logger.Error("Failed to initialize archive index", "error", err)
 		os.Exit(1)
 	}
+	logger.Debug("Archive index initialized")
 
 	// Start archive index refresh loop
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	logger.Debug("Starting archive index refresh loop", "interval", cfg.ArchiveRefreshInterval)
 	archiveIndex.Start(ctx)
 
 	// Initialize zip integrity cache
+	logger.Debug("Initializing zip integrity cache", "fail_ttl", cfg.ZipIntegrityFailTTL)
 	zipIntegrityCache := ctarchiveserve.NewZipIntegrityCache(
 		cfg.ZipIntegrityFailTTL,
 		time.Now,
@@ -120,19 +125,26 @@ func main() {
 	)
 
 	// Initialize zip part cache (Phase 5 performance optimization)
+	logger.Debug("Initializing zip part cache", "max_open", cfg.ZipCacheMaxOpen)
 	zipPartCache := ctarchiveserve.NewZipPartCache(cfg.ZipCacheMaxOpen, metrics)
 
 	// Initialize zip reader
+	logger.Debug("Initializing zip reader")
 	zipReader := ctarchiveserve.NewZipReader(zipIntegrityCache)
 	zipReader.SetZipPartCache(zipPartCache)
 
 	// Initialize monitor.json builder
+	logger.Debug("Initializing monitor.json builder")
 	monitorJSON := ctarchiveserve.NewMonitorJSONBuilder(cfg, zipReader, archiveIndex, logger)
 
 	// Start monitor.json refresh loop (URLs set per-request)
+	logger.Debug("Starting monitor.json refresh loop", "interval", cfg.MonitorJSONRefreshInterval)
+	logger.Debug("Performing initial monitor.json refresh (this may take time with many archives)")
 	monitorJSON.Start(ctx)
+	logger.Debug("Monitor.json initial refresh completed")
 
 	// Create HTTP server
+	logger.Debug("Creating HTTP server")
 	server := ctarchiveserve.NewServer(cfg, logger, metrics, archiveIndex, zipReader, monitorJSON)
 	server.SetVerbose(verboseEnabled)
 
@@ -146,6 +158,7 @@ func main() {
 		WriteTimeout:      cfg.HTTPWriteTimeout,
 		ReadTimeout:       cfg.HTTPReadTimeout,
 	}
+	logger.Debug("HTTP server configured", "addr", httpServer.Addr)
 
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -165,6 +178,7 @@ func main() {
 	}()
 
 	logger.Info("Starting ct-archive-serve", "addr", httpServer.Addr)
+	logger.Debug("Attempting to bind HTTP listener", "addr", httpServer.Addr)
 
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Error("Server error", "error", err)

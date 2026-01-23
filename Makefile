@@ -2,6 +2,7 @@
 
 # Configuration for local builds
 IMAGE_NAME ?= colin-stubbs/ct-archive-serve
+DOCKER_HUB_IMAGE_NAME ?= colinstubbs/ct-archive-serve
 TAG ?= latest
 REGISTRY ?= ghcr.io
 REGISTRY_IMAGE ?= $(REGISTRY)/$(IMAGE_NAME)
@@ -52,6 +53,12 @@ build-container-multi:
 	docker buildx create --use --name multi-builder || true
 	docker buildx build --platform linux/amd64,linux/arm64 -t $(IMAGE_NAME):$(TAG) --load .
 	@echo "✅ Multi-platform build completed"
+
+push-container-docker-hub:
+	@echo "📤 Pushing to Docker Hub..."
+	docker tag $(IMAGE_NAME):$(TAG) docker.io/$(DOCKER_HUB_IMAGE_NAME):$(TAG)
+	docker push docker.io/$(DOCKER_HUB_IMAGE_NAME):$(TAG)
+	@echo "✅ Push completed"
 
 # Build commands
 build:

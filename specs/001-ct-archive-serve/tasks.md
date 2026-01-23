@@ -42,6 +42,7 @@
 ### Structured logging (slog)
 
 - [x] T006 Implement structured JSON logger setup in `internal/ct-archive-serve/logger.go` (stdout/stderr split; `-v/--verbose` and `-d/--debug` level control per `spec.md` `NFR-010`)
+  - **Implementation note**: Added detailed startup debug logging when `-d/--debug` is enabled, including archive discovery progress, monitor.json snapshot building progress, and HTTP listener establishment (per `spec.md` `NFR-010` startup debug logging).
 
 ### Low-cardinality Prometheus metrics
 
@@ -59,6 +60,7 @@
 
 - [x] T011 Add archive index tests in `internal/ct-archive-serve/archive_index_test.go` for discovery under `CT_ARCHIVE_PATH`, mapping `<log>`→folder path via `CT_ARCHIVE_FOLDER_PATTERN` prefix stripping (`FR-003a`), and enumerating `NNN.zip` parts
 - [x] T012 Implement archive discovery + in-memory index in `internal/ct-archive-serve/archive_index.go` (startup build + periodic refresh loop controlled by `CT_ARCHIVE_REFRESH_INTERVAL`; request hot path MUST use in-memory snapshot and MUST NOT rescan disk per `spec.md` `SC-006`)
+  - **Implementation note**: Added mutex protection (`refreshMu`) to serialize refresh operations and prevent concurrent disk scans when refresh takes longer than `CT_ARCHIVE_REFRESH_INTERVAL` (per `spec.md` `FR-006` refresh concurrency protection).
 - [x] T050 Add `<log>` collision handling tests in `internal/ct-archive-serve/archive_index_test.go` (two folders mapping to same `<log>` after `FR-003a` prefix stripping MUST fail startup with invalid configuration per `spec.md` `FR-003b`)
 - [x] T051 Implement `<log>` collision detection in `internal/ct-archive-serve/archive_index.go` so startup fails deterministically with a clear error listing colliding folders per `spec.md` `FR-003b`
 
@@ -77,6 +79,7 @@
 ### CLI entrypoint + safe net/http server options
 
 - [x] T019 Implement CLI flags and process wiring in `cmd/ct-archive-serve/main.go` (`-h|--help|-v|--verbose|-d|--debug`) and configure `http.Server` timeouts/limits from config per `spec.md` (`FR-001`, `FR-005`, `FR-012`) with default listen `:8080`
+  - **Implementation note**: Added detailed startup debug logging when `-d/--debug` is enabled, including archive discovery progress, monitor.json snapshot building progress, and HTTP listener establishment (per `spec.md` `NFR-010` startup debug logging).
 
 ---
 
@@ -90,7 +93,9 @@
 - [x] T021 [US1] Implement `publicBaseURL` derivation helper in `internal/ct-archive-serve/server.go` per `spec.md` (`FR-006`, `FR-012`)
 - [x] T022 [P] [US1] Add monitor snapshot builder tests in `internal/ct-archive-serve/monitor_json_test.go` (extract+parse `log.v3.json` from `000.zip`, set `has_issuers` from presence of `issuer/`, remove `url`, set `submission_url`/`monitoring_url`, deterministic sort by `<log>`)
 - [x] T023 [US1] Implement monitor snapshot builder in `internal/ct-archive-serve/monitor_json.go` per `spec.md` (`FR-006`, `FR-006a`, `FR-006b`)
+  - **Implementation note**: Optimized to open each `000.zip` file only once per log to extract both `log.v3.json` and check for `issuer/` entries (via `extractLogV3JSONAndCheckIssuers`), rather than opening the same ZIP file twice. This significantly reduces startup time for large archives (per `spec.md` `FR-006` ZIP optimization).
 - [x] T024 [US1] Implement periodic refresh loop + atomic snapshot in `internal/ct-archive-serve/monitor_json.go` using `CT_MONITOR_JSON_REFRESH_INTERVAL` and context-driven shutdown per `spec.md` (`FR-007`)
+  - **Implementation note**: Added mutex protection (`refreshMu`) to serialize refresh operations and prevent concurrent refreshes when a refresh takes longer than `CT_MONITOR_JSON_REFRESH_INTERVAL`, preventing resource waste from concurrent ZIP file opens (per `spec.md` `FR-006` refresh concurrency protection).
 - [x] T025 [US1] Wire `GET /monitor.json` handler in `internal/ct-archive-serve/server.go` (render `version="3.0"`, one operator `{name:"ct-archive-serve", email:[], logs:[], tiled_logs:[...]}`, set `log_list_timestamp`, set `Content-Type: application/json`) per `spec.md` (`FR-006`)
 - [x] T052 [P] [US1] Add `/monitor.json` refresh failure behavior tests in `internal/ct-archive-serve/monitor_json_test.go` (if the most recent refresh attempt fails, `GET /monitor.json` MUST return `503` until the next successful refresh per `spec.md` `FR-006`)
 - [x] T053 [US1] Implement `/monitor.json` refresh failure behavior in `internal/ct-archive-serve/monitor_json.go` per `spec.md` `FR-006` (track last refresh error state; serve `503` when unhealthy; resume `200` after next successful refresh; log errors)
