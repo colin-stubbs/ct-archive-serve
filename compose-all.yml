@@ -1,9 +1,16 @@
 ---
+volumes:
+  prometheus_data:
+    # Named volume persists data across container restarts
+    # For local development, you may want to use a bind mount instead:
+    # driver: local
+    # driver_opts:
+    #   type: none
+    #   o: bind
+    #   device: ./prometheus-data
+
 services:
   ct-archive-serve:
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: colin-stubbs/ct-archive-serve:latest
 
     ports:
@@ -122,12 +129,29 @@ services:
       # Enable admin API (for administrative operations)
       - '--web.enable-admin-api'
 
-volumes:
-  prometheus_data:
-    # Named volume persists data across container restarts
-    # For local development, you may want to use a bind mount instead:
-    # driver: local
-    # driver_opts:
-    #   type: none
-    #   o: bind
-    #   device: ./prometheus-data
+  qbittorrent:
+    image: docker.io/qbittorrentofficial/qbittorrent-nox:latest
+    environment:
+      - TZ=${TZ:-Etc/UTC}
+      # Disables display/prompt and manual repsonse requirement related to the legal notice.
+      - QBT_LEGAL_NOTICE=${QBT_LEGAL_NOTICE:-confirm}
+      # qBittorrent WebUI port (default: 8081)
+      - QBT_WEBUI_PORT=${QBT_WEBUI_PORT:-8081}
+      # qBittorrent Torrenting port (default: 6881)
+      - QBT_TORRENTING_PORT=${QBT_TORRENTING_PORT:-6881}
+      # qBittorrent PUID (default: 1000)
+      - PUID=${PUID:-1000}
+      # qBittorrent PGID (default: 1000)
+      - PGID=${PGID:-1000}
+      # qBittorrent UMASK (default: 022), ensures proper file permissions are set for files created by qBittorrent.
+      - UMASK=${UMASK:-022}
+    volumes:
+      # persistent custom qBittorrent configuration,
+      - ./config:/config
+      # shared storage with ct-archive-serve
+      - ./archive:/downloads
+    ports:
+      - ${QBT_WEBUI_HOST:-127.0.0.1}:${QBT_WEBUI_PORT:-8081}:${QBT_WEBUI_PORT:-8081}/tcp
+      - ${QBT_TORRENTING_HOST:-0.0.0.0}:${QBT_TORRENTING_PORT:-6881}:${QBT_TORRENTING_PORT:-6881}/tcp
+      - ${QBT_TORRENTING_HOST:-0.0.0.0}:${QBT_TORRENTING_PORT:-6881}:${QBT_TORRENTING_PORT:-6881}/udp
+    restart: unless-stopped

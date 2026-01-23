@@ -81,28 +81,49 @@ docker run --rm -p 80:8080 \
 
 ### docker compose / podman compose
 
-This repository includes `compose.yml` as a quick-start example.
+This repository includes `compose.yml` as a quick-start example for `ct-archive-serve` on it's own.
+
+The repository also includes `compose-all.yml` as a quick-start example for running:
+1. `ct-archive-serve`
+2. `qBittorrent` (server only, no X) to download the CT archives
+3. `Prometheus` to collect and monitor the `ct-archive-serve` metrics
 
 ```bash
-docker compose up --build
+docker compose up
+```
+
+```bash
+docker compose -f ./compose-all.yml up
 ```
 
 Or:
 
 ```bash
-podman compose up --build
+podman compose up
+```
+
+```bash
+podman compose -f ./compose-all.yml up
 ```
 
 Then access:
 
 - `GET http://localhost:8080/logs.v3.json`
 - `GET http://localhost:8080/metrics`
+- Prometheus UI: `http://localhost:9090` (if Prometheus service is enabled, e.g. `compose-all.yml`)
+- qBittorrent UI: `http://localhost:8081` (if qBittorrent service is enabled, e.g. `compose-all.yml`)
+
+The `compose-all.yml` includes an optional Prometheus service that automatically scrapes metrics from `ct-archive-serve`. The Prometheus configuration is located in `prometheus/prometheus.yml` and is automatically loaded when the Prometheus container starts.
 
 Local tooling:
 
 - `make test`
 - `make lint` (requires `golangci-lint`)
 - `make security` (optionally uses `govulncheck` and `trivy` if installed)
+
+# Podman/systemd Quadlets
+
+Example systemd quadlets, intended for use with Podman based containers running as an unprivileged non-root user, are available under the `systemd` folder.
 
 ## License
 

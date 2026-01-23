@@ -293,6 +293,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
   - The build pipeline MUST produce a container image and, on successful builds for the default branch and/or tags, MUST publish that image to GHCR (`ghcr.io/...`).
 - **NFR-014**: The repository MUST provide container operation examples:
   - A repo-root `compose.yml` MUST be provided as an example for running `ct-archive-serve` via `docker compose` or `podman compose`.
+  - `compose.yml` SHOULD include a Prometheus service configured to automatically discover and collect metrics from `ct-archive-serve` via the `/metrics` endpoint, with a corresponding `prometheus/prometheus.yml` configuration file.
   - `README.md` MUST explain how to operate `ct-archive-serve` using containers (including `docker run` and compose-based examples).
 - **NFR-015**: The container image defaults MUST be safe-by-default:
   - The container image MUST run as `nobody/nogroup` (non-root).

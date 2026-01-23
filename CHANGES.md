@@ -1,3 +1,10 @@
+* 2026-01-21 - Add Prometheus configuration for metrics collection
+
+- Created `prometheus/prometheus.yml` configuration file that automatically discovers and scrapes metrics from ct-archive-serve
+- Updated `compose.yml` Prometheus service configuration (fixed duplicate comment, verified service connectivity)
+- Updated `spec.md` NFR-014 to document Prometheus integration in compose.yml
+- Updated `README.md` to mention Prometheus UI access and configuration
+
 * 2026-01-21 - Rename MONITOR_JSON references to LOGLISTV3_JSON throughout codebase
 
 - Renamed environment variable `CT_MONITOR_JSON_REFRESH_INTERVAL` to `CT_LOGLISTV3_JSON_REFRESH_INTERVAL`

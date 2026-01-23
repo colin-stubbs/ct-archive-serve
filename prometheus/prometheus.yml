@@ -1,0 +1,58 @@
+# Prometheus configuration for ct-archive-serve
+#
+# This configuration automatically discovers and collects metrics from ct-archive-serve.
+# The ct-archive-serve service exposes Prometheus metrics at /metrics endpoint.
+
+global:
+  # How frequently to scrape targets (default: 15s)
+  scrape_interval: 15s
+  
+  # How long to wait before timing out a scrape (default: 10s)
+  scrape_timeout: 10s
+  
+  # How frequently to evaluate rules (default: 15s)
+  evaluation_interval: 15s
+  
+  # External labels to add to any time series or alerts
+  external_labels:
+    cluster: 'ct-archive-serve'
+    environment: 'development'
+
+# Scrape configurations
+scrape_configs:
+  # Scrape ct-archive-serve metrics
+  - job_name: 'ct-archive-serve'
+    # Scrape interval for this job (overrides global scrape_interval)
+    scrape_interval: 15s
+    # Scrape timeout for this job (overrides global scrape_timeout)
+    scrape_timeout: 10s
+    
+    # Metrics path (default: /metrics)
+    metrics_path: '/metrics'
+    
+    # HTTP scheme (http or https)
+    scheme: 'http'
+    
+    # Static targets
+    static_configs:
+      - targets:
+          # Use Docker Compose service name and internal port
+          # ct-archive-serve listens on port 8080 inside the container
+          - 'ct-archive-serve:8080'
+        labels:
+          service: 'ct-archive-serve'
+          instance: 'ct-archive-serve-1'
+    
+    # Optional: Relabel configurations for additional flexibility
+    relabel_configs:
+      # Add a label to identify the source
+      - source_labels: [__address__]
+        target_label: 'scrape_target'
+        replacement: '${1}'
+    
+    # Optional: Metric relabeling (e.g., to drop unwanted metrics)
+    # Example: Drop specific metrics if needed
+    # metric_relabel_configs:
+    #   - source_labels: [__name__]
+    #     regex: 'go_.*'
+    #     action: drop
