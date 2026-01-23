@@ -118,7 +118,7 @@ internal/
     ├── server.go
     ├── routing.go
     ├── archive_index.go
-    ├── monitor_json.go
+    ├── loglistv3_json.go
     ├── zip_cache.go
     ├── zip_reader.go
     └── *_test.go

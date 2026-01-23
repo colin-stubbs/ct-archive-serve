@@ -14,7 +14,10 @@
 - Renamed metrics: `monitorJSONRequestsTotal` → `logListV3JSONRequestsTotal`, `monitorJSONRequestDuration` → `logListV3JSONRequestDuration`
 - Renamed metric method `ObserveMonitorJSONRequest` → `ObserveLogListV3JSONRequest`
 - Updated all variable names from `monitorJSON` to `logListV3JSON`
-- Updated all test function names and references
+- Renamed files: `monitor_json.go` → `loglistv3_json.go`, `monitor_json_test.go` → `loglistv3_json_test.go`
+- Renamed test functions: `TestMonitorSnapshotBuilder_*` → `TestLogListV3JSONBuilder_*`
+- Renamed test helper: `mustCreateZipForMonitor` → `mustCreateZipForLogListV3`
+- Updated all file references in `specs/001-ct-archive-serve/tasks.md` and `plan.md`
 - Updated documentation (spec.md, plan.md, tasks.md, README.md, quickstart.md, compose.yml)
 - Updated terminology: "monitor JSON" → "loglist v3 JSON" throughout
 

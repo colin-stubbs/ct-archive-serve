@@ -22,7 +22,7 @@ func TestLogListV3JSONSnapshotBuilder_ExtractLogV3JSON(t *testing.T) {
 	}
 
 	zipPath := filepath.Join(logFolder, "000.zip")
-	mustCreateZipForMonitor(t, zipPath, map[string][]byte{
+	mustCreateZipForLogListV3(t, zipPath, map[string][]byte{
 		"log.v3.json": []byte(`{"description":"Test Log","log_id":"abc123","key":"def456","mmd":86400,"log_type":"prod","state":{}}`),
 	})
 
@@ -48,7 +48,7 @@ func TestLogListV3JSONSnapshotBuilder_ExtractLogV3JSON(t *testing.T) {
 	}
 }
 
-func TestMonitorSnapshotBuilder_HasIssuers_True(t *testing.T) {
+func TestLogListV3JSONBuilder_HasIssuers_True(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -58,7 +58,7 @@ func TestMonitorSnapshotBuilder_HasIssuers_True(t *testing.T) {
 	}
 
 	zipPath := filepath.Join(logFolder, "000.zip")
-	mustCreateZipForMonitor(t, zipPath, map[string][]byte{
+	mustCreateZipForLogListV3(t, zipPath, map[string][]byte{
 		"log.v3.json":   []byte(`{"description":"Test"}`),
 		"issuer/abc123": []byte("cert data"),
 		"issuer/def456": []byte("cert data"),
@@ -83,7 +83,7 @@ func TestMonitorSnapshotBuilder_HasIssuers_True(t *testing.T) {
 	}
 }
 
-func TestMonitorSnapshotBuilder_HasIssuers_False(t *testing.T) {
+func TestLogListV3JSONBuilder_HasIssuers_False(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -93,7 +93,7 @@ func TestMonitorSnapshotBuilder_HasIssuers_False(t *testing.T) {
 	}
 
 	zipPath := filepath.Join(logFolder, "000.zip")
-	mustCreateZipForMonitor(t, zipPath, map[string][]byte{
+	mustCreateZipForLogListV3(t, zipPath, map[string][]byte{
 		"log.v3.json": []byte(`{"description":"Test"}`),
 		"tile/0/000":  []byte("tile data"),
 		// No issuer/ entries
@@ -117,7 +117,7 @@ func TestMonitorSnapshotBuilder_HasIssuers_False(t *testing.T) {
 	}
 }
 
-func TestMonitorSnapshotBuilder_DeterministicSort(t *testing.T) {
+func TestLogListV3JSONBuilder_DeterministicSort(t *testing.T) {
 	t.Parallel()
 
 	// Test that log names are sorted deterministically (ascending ASCII)
@@ -135,7 +135,7 @@ func TestMonitorSnapshotBuilder_DeterministicSort(t *testing.T) {
 	}
 }
 
-func TestMonitorSnapshotBuilder_RemoveURL_AddSubmissionMonitoring(t *testing.T) {
+func TestLogListV3JSONBuilder_RemoveURL_AddSubmissionMonitoring(t *testing.T) {
 	t.Parallel()
 
 	// Test that a log.v3.json entry with "url" gets it removed and gets submission_url/monitoring_url added
@@ -215,7 +215,7 @@ func TestLogListV3JSONBuilder_LogListV3Validation(t *testing.T) {
 	// log_id: base64("test_log_id_32_bytes_long!!") = "dGVzdF9sb2dfaWRfMzJfYnl0ZXNfbG9uZyEh"
 	// key: base64("test_key_32_bytes_long_data!!") = "dGVzdF9rZXlfMzJfYnl0ZXNfbG9uZ19kYXRhISE="
 	zipPath := filepath.Join(logFolder, "000.zip")
-	mustCreateZipForMonitor(t, zipPath, map[string][]byte{
+	mustCreateZipForLogListV3(t, zipPath, map[string][]byte{
 		"log.v3.json": []byte(`{"description":"Test Log","log_id":"dGVzdF9sb2dfaWRfMzJfYnl0ZXNfbG9uZyEh","key":"dGVzdF9rZXlfMzJfYnl0ZXNfbG9uZ19kYXRhISE=","mmd":86400,"log_type":"prod","state":{}}`),
 	})
 
@@ -268,8 +268,8 @@ func TestLogListV3JSONBuilder_LogListV3Validation(t *testing.T) {
 	}
 }
 
-// mustCreateZipForMonitor is a helper to create zip files for logs.v3.json tests.
-func mustCreateZipForMonitor(t *testing.T, path string, files map[string][]byte) {
+// mustCreateZipForLogListV3 is a helper to create zip files for logs.v3.json tests.
+func mustCreateZipForLogListV3(t *testing.T, path string, files map[string][]byte) {
 	t.Helper()
 
 	//nolint:gosec // G304: path is validated and comes from test helpers, not user input
