@@ -121,14 +121,17 @@ func (b *MonitorJSONBuilder) extractLogV3JSONAndCheckIssuers(zipPath string) (*L
 
 	var logV3File *zip.File
 	hasIssuers := false
+	issuerLogged := false
 
 	for _, f := range r.File {
 		if f.Name == "log.v3.json" {
 			logV3File = f
 		} else if strings.HasPrefix(f.Name, "issuer/") {
 			hasIssuers = true
-			if b.logger != nil {
+			// Only log the first issuer entry found to reduce verbosity
+			if b.logger != nil && !issuerLogged {
 				b.logger.Debug("Found issuer entry", "zip_path", zipPath, "entry", f.Name)
+				issuerLogged = true
 			}
 		}
 	}
