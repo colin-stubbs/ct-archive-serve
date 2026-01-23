@@ -9,7 +9,7 @@
 
 ## Dependency Graph (User Stories)
 
-- **User Story 1 (P1)**: `GET /monitor.json` for discovery of archived logs
+- **User Story 1 (P1)**: `GET /logs.v3.json` for discovery of archived logs
   - Depends on: config + archive discovery + zip reading + base HTTP server
 - **User Story 2 (P1)**: Serve Static-CT assets from archive zips under `/<log>/...`
   - Depends on: config + archive discovery + routing + zip reading + base HTTP server
@@ -36,18 +36,18 @@
 
 ### Configuration (env vars) + validation
 
-- [x] T004 Add config parsing tests in `internal/ct-archive-serve/config_test.go` covering defaults and invalid values for: `CT_ARCHIVE_PATH`, `CT_ARCHIVE_FOLDER_PATTERN` (`<prefix>*` only), `CT_MONITOR_JSON_REFRESH_INTERVAL`, `CT_ARCHIVE_REFRESH_INTERVAL`, `CT_ZIP_CACHE_MAX_OPEN`, `CT_ZIP_INTEGRITY_FAIL_TTL`, and `CT_HTTP_*` (incl. `CT_HTTP_TRUSTED_SOURCES`)
+- [x] T004 Add config parsing tests in `internal/ct-archive-serve/config_test.go` covering defaults and invalid values for: `CT_ARCHIVE_PATH`, `CT_ARCHIVE_FOLDER_PATTERN` (`<prefix>*` only), `CT_LOGLISTV3_JSON_REFRESH_INTERVAL`, `CT_ARCHIVE_REFRESH_INTERVAL`, `CT_ZIP_CACHE_MAX_OPEN`, `CT_ZIP_INTEGRITY_FAIL_TTL`, and `CT_HTTP_*` (incl. `CT_HTTP_TRUSTED_SOURCES`)
 - [x] T005 Implement env config parsing/validation in `internal/ct-archive-serve/config.go` per `spec.md` (`FR-004`, `FR-007`, `FR-011`, `FR-012`, `FR-013`) including `CT_HTTP_TRUSTED_SOURCES` parsing as CSV of `netip.Addr` and/or `netip.Prefix`
 
 ### Structured logging (slog)
 
 - [x] T006 Implement structured JSON logger setup in `internal/ct-archive-serve/logger.go` (stdout/stderr split; `-v/--verbose` and `-d/--debug` level control per `spec.md` `NFR-010`)
-  - **Implementation note**: Added detailed startup debug logging when `-d/--debug` is enabled, including archive discovery progress, monitor.json snapshot building progress, and HTTP listener establishment (per `spec.md` `NFR-010` startup debug logging).
+  - **Implementation note**: Added detailed startup debug logging when `-d/--debug` is enabled, including archive discovery progress, logs.v3.json snapshot building progress, and HTTP listener establishment (per `spec.md` `NFR-010` startup debug logging).
 
 ### Low-cardinality Prometheus metrics
 
-- [x] T007 Add metrics unit tests in `internal/ct-archive-serve/metrics_test.go` asserting low-cardinality labels: only `/monitor.json` aggregate, and per-`<log>` aggregate for all `/<log>/...` combined (no full-path / endpoint / status labels per `spec.md` `NFR-009`)
-- [x] T008 Implement metrics in `internal/ct-archive-serve/metrics.go` (counters + durations for `/monitor.json`, and counters + durations labeled by `log` for `/<log>/...`)
+- [x] T007 Add metrics unit tests in `internal/ct-archive-serve/metrics_test.go` asserting low-cardinality labels: only `/logs.v3.json` aggregate, and per-`<log>` aggregate for all `/<log>/...` combined (no full-path / endpoint / status labels per `spec.md` `NFR-009`)
+- [x] T008 Implement metrics in `internal/ct-archive-serve/metrics.go` (counters + durations for `/logs.v3.json`, and counters + durations labeled by `log` for `/<log>/...`)
 - [x] T048 Add resource observability metrics tests in `internal/ct-archive-serve/metrics_test.go` (assert low-cardinality gauges exist for cache/index/integrity state and have no per-request/path labels; aligns with constitution Principle IV) **[Note: Tests may initially fail until T049 is complete; this is acceptable for test-driven development]**
 - [x] T049 Implement resource observability gauges in `internal/ct-archive-serve/metrics.go` (e.g., open zip parts, cache size/evictions, integrity passed/failed counts, discovered logs/zip parts) and update `server.go`/caches to keep them current **[Blocks: T048 tests will fail until this is complete]**
 
@@ -79,15 +79,15 @@
 ### CLI entrypoint + safe net/http server options
 
 - [x] T019 Implement CLI flags and process wiring in `cmd/ct-archive-serve/main.go` (`-h|--help|-v|--verbose|-d|--debug`) and configure `http.Server` timeouts/limits from config per `spec.md` (`FR-001`, `FR-005`, `FR-012`) with default listen `:8080`
-  - **Implementation note**: Added detailed startup debug logging when `-d/--debug` is enabled, including archive discovery progress, monitor.json snapshot building progress, and HTTP listener establishment (per `spec.md` `NFR-010` startup debug logging).
+  - **Implementation note**: Added detailed startup debug logging when `-d/--debug` is enabled, including archive discovery progress, logs.v3.json snapshot building progress, and HTTP listener establishment (per `spec.md` `NFR-010` startup debug logging).
 
 ---
 
-## Phase 3: User Story 1 — Discover archived logs via `monitor.json` (Priority: P1) 🎯 MVP
+## Phase 3: User Story 1 — Discover archived logs via `logs.v3.json` (Priority: P1) 🎯 MVP
 
-**Goal**: Serve `GET /monitor.json` (CT log list v3 compatible) derived from discovered archives.
+**Goal**: Serve `GET /logs.v3.json` (CT log list v3 compatible) derived from discovered archives.
 
-**Independent Test**: With multiple `ct_*` folders present, `GET /monitor.json` returns `200` `application/json` and contains one `tiled_logs[]` entry per discovered folder with a valid `000.zip`→`log.v3.json`.
+**Independent Test**: With multiple `ct_*` folders present, `GET /logs.v3.json` returns `200` `application/json` and contains one `tiled_logs[]` entry per discovered folder with a valid `000.zip`→`log.v3.json`.
 
 - [x] T020 [P] [US1] Add `publicBaseURL` derivation tests in `internal/ct-archive-serve/server_test.go` (trusted-source gating via `CT_HTTP_TRUSTED_SOURCES`, comma-separated `X-Forwarded-*`, whitespace trimming, `Host` fallback, scheme lowercasing) per `spec.md` (`FR-006`, `FR-012`)
 - [x] T021 [US1] Implement `publicBaseURL` derivation helper in `internal/ct-archive-serve/server.go` per `spec.md` (`FR-006`, `FR-012`)
@@ -95,11 +95,11 @@
 - [x] T023 [US1] Implement monitor snapshot builder in `internal/ct-archive-serve/monitor_json.go` per `spec.md` (`FR-006`, `FR-006a`, `FR-006b`)
   - **Implementation note**: Optimized to open each `000.zip` file only once per log to extract both `log.v3.json` and check for `issuer/` entries (via `extractLogV3JSONAndCheckIssuers`), rather than opening the same ZIP file twice. This significantly reduces startup time for large archives (per `spec.md` `FR-006` ZIP optimization).
   - **Implementation note (mtime caching)**: Added mtime-based caching to avoid re-reading unchanged zip files. Before opening a `000.zip` file, the implementation checks the file's modification time. If the mtime matches the cached mtime, cached data is used without opening the ZIP file. Cache entries are automatically cleaned up when logs are removed from the archive index. This optimization significantly reduces disk I/O and CPU usage during periodic refreshes for large, stable archive sets (per `spec.md` `FR-006` mtime-based caching).
-- [x] T024 [US1] Implement periodic refresh loop + atomic snapshot in `internal/ct-archive-serve/monitor_json.go` using `CT_MONITOR_JSON_REFRESH_INTERVAL` and context-driven shutdown per `spec.md` (`FR-007`)
+- [x] T024 [US1] Implement periodic refresh loop + atomic snapshot in `internal/ct-archive-serve/monitor_json.go` using `CT_LOGLISTV3_JSON_REFRESH_INTERVAL` and context-driven shutdown per `spec.md` (`FR-007`)
   - **Implementation note**: Added mutex protection (`refreshMu`) to serialize refresh operations and prevent concurrent refreshes when a refresh takes longer than `CT_MONITOR_JSON_REFRESH_INTERVAL`, preventing resource waste from concurrent ZIP file opens (per `spec.md` `FR-006` refresh concurrency protection).
-- [x] T025 [US1] Wire `GET /monitor.json` handler in `internal/ct-archive-serve/server.go` (render `version="3.0"`, one operator `{name:"ct-archive-serve", email:[], logs:[], tiled_logs:[...]}`, set `log_list_timestamp`, set `Content-Type: application/json`) per `spec.md` (`FR-006`)
-- [x] T052 [P] [US1] Add `/monitor.json` refresh failure behavior tests in `internal/ct-archive-serve/monitor_json_test.go` (if the most recent refresh attempt fails, `GET /monitor.json` MUST return `503` until the next successful refresh per `spec.md` `FR-006`)
-- [x] T053 [US1] Implement `/monitor.json` refresh failure behavior in `internal/ct-archive-serve/monitor_json.go` per `spec.md` `FR-006` (track last refresh error state; serve `503` when unhealthy; resume `200` after next successful refresh; log errors)
+- [x] T025 [US1] Wire `GET /logs.v3.json` handler in `internal/ct-archive-serve/server.go` (render `version="3.0"`, one operator `{name:"ct-archive-serve", email:[], logs:[], tiled_logs:[...]}`, set `log_list_timestamp`, set `Content-Type: application/json`) per `spec.md` (`FR-006`)
+- [x] T052 [P] [US1] Add `/logs.v3.json` refresh failure behavior tests in `internal/ct-archive-serve/monitor_json_test.go` (if the most recent refresh attempt fails, `GET /logs.v3.json` MUST return `503` until the next successful refresh per `spec.md` `FR-006`)
+- [x] T053 [US1] Implement `/logs.v3.json` refresh failure behavior in `internal/ct-archive-serve/monitor_json.go` per `spec.md` `FR-006` (track last refresh error state; serve `503` when unhealthy; resume `200` after next successful refresh; log errors)
 
 ---
 

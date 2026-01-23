@@ -18,7 +18,7 @@ type Config struct {
 	ArchiveFolderPattern string
 	ArchiveFolderPrefix  string
 
-	MonitorJSONRefreshInterval time.Duration
+	LogListV3JSONRefreshInterval time.Duration
 	ArchiveRefreshInterval     time.Duration
 
 	ZipCacheMaxOpen     int
@@ -69,7 +69,7 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 	cfg := Config{
 		ArchivePath:          "/var/log/ct/archive",
 		ArchiveFolderPattern: "ct_*",
-		MonitorJSONRefreshInterval: 10 * time.Minute,
+		LogListV3JSONRefreshInterval: 10 * time.Minute,
 		ArchiveRefreshInterval:     5 * time.Minute,
 		ZipCacheMaxOpen:            256,
 		ZipIntegrityFailTTL:        5 * time.Minute,
@@ -97,15 +97,15 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 	}
 	cfg.ArchiveFolderPrefix = prefix
 
-	if v, ok := lookup("CT_MONITOR_JSON_REFRESH_INTERVAL"); ok && v != "" {
+	if v, ok := lookup("CT_LOGLISTV3_JSON_REFRESH_INTERVAL"); ok && v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
-			return Config{}, fmt.Errorf("CT_MONITOR_JSON_REFRESH_INTERVAL: %w", err)
+			return Config{}, fmt.Errorf("CT_LOGLISTV3_JSON_REFRESH_INTERVAL: %w", err)
 		}
 		if d <= 0 {
-			return Config{}, errors.New("CT_MONITOR_JSON_REFRESH_INTERVAL: must be > 0")
+			return Config{}, errors.New("CT_LOGLISTV3_JSON_REFRESH_INTERVAL: must be > 0")
 		}
-		cfg.MonitorJSONRefreshInterval = d
+		cfg.LogListV3JSONRefreshInterval = d
 	}
 
 	if v, ok := lookup("CT_ARCHIVE_REFRESH_INTERVAL"); ok && v != "" {

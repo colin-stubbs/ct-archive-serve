@@ -68,15 +68,15 @@ An observed archive layout is:
 
 There may also be non-zip files (e.g. `*_meta.sqlite`, `*_meta.xml`, padding files). These should be ignored by archive discovery.
 
-## monitor.json generation
+## logs.v3.json generation
 
-`ct-archive-serve` also exposes `GET /monitor.json` as a generated log list for the archives currently present on disk.
+`ct-archive-serve` also exposes `GET /logs.v3.json` as a generated log list for the archives currently present on disk.
 
 The intended output shape matches a CT log list v3 schema used by Static-CT tooling, at minimum:
 
 - `operators[0].logs` = `[]`
 - `operators[0].tiled_logs` populated from each discovered archive folder’s `000.zip` → `log.v3.json`, with:
-  - `submission_url` and `monitoring_url` set to `<publicBaseURL>/<log>` where `<publicBaseURL>` is derived from the incoming `/monitor.json` request headers (`Host`, and `X-Forwarded-Host`/`X-Forwarded-Proto` when present)
+  - `submission_url` and `monitoring_url` set to `<publicBaseURL>/<log>` where `<publicBaseURL>` is derived from the incoming `/logs.v3.json` request headers (`Host`, and `X-Forwarded-Host`/`X-Forwarded-Proto` when present)
   - `<log>` derived by stripping the `CT_ARCHIVE_FOLDER_PATTERN` prefix (e.g. `ct_*` → strip `ct_`)
 
 Operator identity fields (`operators[].name`, `operators[].email`) are informational for this use-case; consumer validation focuses on log entry URL fields and key/log_id consistency.

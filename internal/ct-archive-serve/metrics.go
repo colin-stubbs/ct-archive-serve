@@ -9,13 +9,13 @@ import (
 // Metrics provides low-cardinality Prometheus metrics for ct-archive-serve.
 //
 // Per specs/001-ct-archive-serve/spec.md (NFR-009), metrics are limited to:
-// - `/monitor.json` aggregate
+// - `/logs.v3.json` aggregate
 // - per-`<log>` aggregates for all `/<log>/...` requests combined
 //
 // Metrics MUST NOT be labeled by status code, endpoint name, or full request path.
 type Metrics struct {
-	monitorJSONRequestsTotal   prometheus.Counter
-	monitorJSONRequestDuration prometheus.Histogram
+	logListV3JSONRequestsTotal   prometheus.Counter
+	logListV3JSONRequestDuration prometheus.Histogram
 
 	logRequestsTotal   *prometheus.CounterVec
 	logRequestDuration *prometheus.HistogramVec
@@ -36,17 +36,17 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	}
 
 	m := &Metrics{
-		monitorJSONRequestsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+		logListV3JSONRequestsTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: "ct_archive_serve",
 			Subsystem: "http",
-			Name:      "monitor_json_requests_total",
-			Help:      "Total number of /monitor.json requests.",
+			Name:      "loglistv3_json_requests_total",
+			Help:      "Total number of /logs.v3.json requests.",
 		}),
-		monitorJSONRequestDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+		logListV3JSONRequestDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "ct_archive_serve",
 			Subsystem: "http",
-			Name:      "monitor_json_request_duration_seconds",
-			Help:      "Duration of /monitor.json requests in seconds.",
+			Name:      "loglistv3_json_request_duration_seconds",
+			Help:      "Duration of /logs.v3.json requests in seconds.",
 			Buckets:   prometheus.DefBuckets,
 		}),
 		logRequestsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -97,8 +97,8 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	}
 
 	reg.MustRegister(
-		m.monitorJSONRequestsTotal,
-		m.monitorJSONRequestDuration,
+		m.logListV3JSONRequestsTotal,
+		m.logListV3JSONRequestDuration,
 		m.logRequestsTotal,
 		m.logRequestDuration,
 		m.archiveLogsDiscovered,
@@ -112,12 +112,12 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	return m
 }
 
-func (m *Metrics) ObserveMonitorJSONRequest(d time.Duration) {
+func (m *Metrics) ObserveLogListV3JSONRequest(d time.Duration) {
 	if m == nil {
 		return
 	}
-	m.monitorJSONRequestsTotal.Inc()
-	m.monitorJSONRequestDuration.Observe(d.Seconds())
+	m.logListV3JSONRequestsTotal.Inc()
+	m.logListV3JSONRequestDuration.Observe(d.Seconds())
 }
 
 func (m *Metrics) ObserveLogRequest(log string, d time.Duration) {

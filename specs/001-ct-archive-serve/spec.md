@@ -10,8 +10,8 @@
 ### Session 2026-01-20
 
 - Q: How is `<log>` derived from discovered archive folder names? → A: `CT_ARCHIVE_FOLDER_PATTERN` MUST be of the form `<prefix>*` (a literal prefix followed by a single trailing `*`, default `ct_*`). `<log>` is the archive folder name with the `<prefix>` removed (e.g., for `CT_ARCHIVE_FOLDER_PATTERN=ct_*` → `<prefix>=ct_`, folder `ct_digicert_nessie2022` maps to `<log>=digicert_nessie2022`). If `CT_ARCHIVE_FOLDER_PATTERN` is not of the supported `<prefix>*` form, `ct-archive-serve` MUST fail startup with an invalid configuration error.
-- Q: Should `ct-archive-serve` expose a log list endpoint for discovered archived logs? → A: Yes—`ct-archive-serve` must serve `GET /monitor.json` (`application/json`) and periodically regenerate it by extracting `log.v3.json` from each discovered log folder’s `000.zip`.
-- Q: How is `has_issuers` determined for each `/monitor.json` `tiled_logs[]` entry? → A: `has_issuers=true` iff the discovered log folder’s `000.zip` contains at least one zip entry whose name begins with `issuer/`; otherwise `has_issuers=false`.
+- Q: Should `ct-archive-serve` expose a log list endpoint for discovered archived logs? → A: Yes—`ct-archive-serve` must serve `GET /logs.v3.json` (`application/json`) and periodically regenerate it by extracting `log.v3.json` from each discovered log folder’s `000.zip`.
+- Q: How is `has_issuers` determined for each `/logs.v3.json` `tiled_logs[]` entry? → A: `has_issuers=true` iff the discovered log folder’s `000.zip` contains at least one zip entry whose name begins with `issuer/`; otherwise `has_issuers=false`.
 - Q: How should `Content-Type` be set on responses? → A: Use the most appropriate `Content-Type` for the served asset (e.g., `.json` → `application/json`; `/checkpoint` → `text/plain; charset=utf-8`; tiles → `application/octet-stream`; issuers → `application/pkix-cert`).
 
 ### Session 2026-01-21
@@ -39,18 +39,18 @@
   - Demonstrated to users independently
 -->
 
-### User Story 1 - Discover archived logs via monitor.json (Priority: P1)
+### User Story 1 - Discover archived logs via logs.v3.json (Priority: P1)
 
 A user downloads archived CT logs via torrents (e.g., from the `torrents.rss` feed in [geomys/ct-archive](https://github.com/geomys/ct-archive)) into a directory where each archive is stored as `ct_<LOG_NAME>/NNN.zip` parts. The user wants a single JSON endpoint that lists all discovered archived Static-CT logs so other tools (like `ctlogdaemon`) can automatically discover and consume them **without unzipping the archives**.
 
 **Why this priority**: It enables automated discovery and removes the need to manually curate log list JSON when archives change.
 
-**Independent Test**: Start `ct-archive-serve` with a `CT_ARCHIVE_PATH` containing multiple `ct_*` folders (as produced by a torrent client) with `000.zip`; `GET /monitor.json` returns `200` with `Content-Type: application/json` and includes one `tiled_logs` entry per discovered log, derived from each `000.zip`’s `log.v3.json`.
+**Independent Test**: Start `ct-archive-serve` with a `CT_ARCHIVE_PATH` containing multiple `ct_*` folders (as produced by a torrent client) with `000.zip`; `GET /logs.v3.json` returns `200` with `Content-Type: application/json` and includes one `tiled_logs` entry per discovered log, derived from each `000.zip`’s `log.v3.json`.
 
 **Acceptance Scenarios**:
 
-1. **Given** a CT archive path with multiple discovered log folders each containing `000.zip` with `log.v3.json`, **When** a client requests `GET /monitor.json`, **Then** the server responds `200` with `Content-Type: application/json` and a JSON document listing those logs.
-2. **Given** a CT archive path where `/monitor.json` refresh cannot succeed (e.g., no valid `000.zip` + `log.v3.json`), **When** a client requests `GET /monitor.json`, **Then** the server responds `503` (temporarily unavailable) until a subsequent refresh succeeds (see `FR-006` refresh failure behavior).
+1. **Given** a CT archive path with multiple discovered log folders each containing `000.zip` with `log.v3.json`, **When** a client requests `GET /logs.v3.json`, **Then** the server responds `200` with `Content-Type: application/json` and a JSON document listing those logs.
+2. **Given** a CT archive path where `/logs.v3.json` refresh cannot succeed (e.g., no valid `000.zip` + `log.v3.json`), **When** a client requests `GET /logs.v3.json`, **Then** the server responds `503` (temporarily unavailable) until a subsequent refresh succeeds (see `FR-006` refresh failure behavior).
 
 ---
 
@@ -90,7 +90,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
   - Static-CT / C2SP (tiled log) file-hierarchy interactions, where doing so materially reduces implementation risk (see `NFR-012`)
   - By default, the server SHOULD listen on `:8080` (all interfaces) unless constrained by the deployment environment.
 - **FR-002**: `ct-archive-serve` MUST serve these paths with appropriate `Content-Type`:
-  - `GET /monitor.json` → `application/json`
+  - `GET /logs.v3.json` → `application/json`
   - `GET /metrics` → `text/plain; version=0.0.4; charset=utf-8`
   - `GET /<log>/checkpoint` → `text/plain; charset=utf-8`
   - `GET /<log>/log.v3.json` → `application/json`
@@ -108,13 +108,13 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
   - For any other HTTP method targeting a supported route, the server MUST respond `405` and include `Allow: GET, HEAD`.
   - For unknown/unsupported routes, the server MUST respond `404` regardless of method.
 - **FR-003**: `ct-archive-serve` MUST support serving multiple archived CT logs from subfolders under `CT_ARCHIVE_PATH` (default: `/var/log/ct/archive`) filtered by `CT_ARCHIVE_FOLDER_PATTERN` (default: `ct_*`).
-  - Within each discovered archive folder, `ct-archive-serve` MUST consider zip parts named `NNN.zip` where `NNN` is a 3-digit decimal number (e.g., `000.zip`, `001.zip`, …). `000.zip` is required for `/monitor.json` generation per `FR-006`.
+  - Within each discovered archive folder, `ct-archive-serve` MUST consider zip parts named `NNN.zip` where `NNN` is a 3-digit decimal number (e.g., `000.zip`, `001.zip`, …). `000.zip` is required for `/logs.v3.json` generation per `FR-006`.
 - **FR-003a**: `ct-archive-serve` MUST derive the request `<log>` path segment from the discovered archive folder name by stripping a configured prefix. `CT_ARCHIVE_FOLDER_PATTERN` MUST be of the form `<prefix>*` (literal prefix followed by a single trailing `*`), and `ct-archive-serve` MUST strip exactly `<prefix>` from the folder name to produce `<log>`. If `CT_ARCHIVE_FOLDER_PATTERN` is not of the supported `<prefix>*` form, `ct-archive-serve` MUST fail startup with an invalid configuration error.
 - **FR-003b**: `<log>` collision handling: If two or more discovered archive folders map to the same `<log>` after applying the `CT_ARCHIVE_FOLDER_PATTERN` prefix strip (`FR-003a`), `ct-archive-serve` MUST fail startup with an invalid configuration error. The error message SHOULD include the colliding folder names to aid remediation.
 - **FR-004**: `ct-archive-serve` MUST use environment variables to configure all aspects of operation, with documented defaults. Environment variables configure runtime behavior; CLI flags are limited to help output and logging verbosity/debug only.
 - **FR-005**: `ct-archive-serve` MUST support `-h|--help|-d|--debug|-v|--verbose` CLI arguments to modify operation (help and logging).
-- **FR-006**: `ct-archive-serve` MUST generate and periodically refresh `GET /monitor.json` by extracting `log.v3.json` from `000.zip` in each discovered archive folder. The generated list MUST use `tiled_logs` entries compatible with common CT log list v3 consumers.
-  - When serving `GET /monitor.json`, `ct-archive-serve` MUST set each entry’s `submission_url` and `monitoring_url` to the request’s derived “public base URL” plus `/<log>`.
+- **FR-006**: `ct-archive-serve` MUST generate and periodically refresh `GET /logs.v3.json` by extracting `log.v3.json` from `000.zip` in each discovered archive folder. The generated list MUST use `tiled_logs` entries compatible with common CT log list v3 consumers.
+  - When serving `GET /logs.v3.json`, `ct-archive-serve` MUST set each entry’s `submission_url` and `monitoring_url` to the request’s derived “public base URL” plus `/<log>`.
   - The “public base URL” MUST be derived from the incoming HTTP request (not an environment variable):
     - `ct-archive-serve` MUST treat `X-Forwarded-*` headers as **untrusted by default**. It MUST only use `X-Forwarded-Host` and `X-Forwarded-Proto` when the request’s source IP is trusted per `CT_HTTP_TRUSTED_SOURCES` (see `FR-012`).
     - The request source IP MUST be derived from the TCP peer address (`net/http` `RemoteAddr`, host portion of `IP:port`).
@@ -128,7 +128,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
       - If the chosen header value contains a comma-separated list, split on `,`, trim ASCII whitespace on each element, and use the first non-empty element.
       - The resulting scheme SHOULD be lowercased for URL construction.
     - Construct `publicBaseURL = "<scheme>://<host>"` and then `submission_url = publicBaseURL + "/<log>"`, `monitoring_url = publicBaseURL + "/<log>"`
-  - The `/monitor.json` response MUST be compatible with the CT log list v3 JSON schema used by Static-CT tooling. Minimum required structure:
+  - The `/logs.v3.json` response MUST be compatible with the CT log list v3 JSON schema used by Static-CT tooling. Minimum required structure:
     - `version` MUST be `"3.0"`
     - `operators` MUST contain exactly one operator object with:
       - `name` = `"ct-archive-serve"`
@@ -137,17 +137,18 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
       - `tiled_logs` populated from discovered archive folders (one entry per folder with a valid `000.zip` → `log.v3.json`)
       - `tiled_logs` MUST be sorted deterministically by `<log>` in ascending ASCII lexicographic order (where `<log>` is derived from the archive folder name per `FR-003a`)
     - `log_list_timestamp` SHOULD be set to the time the current snapshot was generated/refreshed
+  - **Validation requirement**: The generated `/logs.v3.json` output MUST be validated using the `loglist3` library from `github.com/google/certificate-transparency-go/loglist3` to ensure compatibility with CT log list v3 consumers. This validation MUST be performed in tests to verify that the JSON structure conforms to the expected schema and can be parsed by standard CT tooling.
   - **Refresh failure behavior**:
-    - If the most recent refresh attempt fails for any reason (e.g., because a `000.zip` is temporarily unreadable or `log.v3.json` parsing fails), `ct-archive-serve` MUST respond to `GET /monitor.json` with HTTP `503` (temporarily unavailable), and SHOULD log an error describing the refresh failure.
+    - If the most recent refresh attempt fails for any reason (e.g., because a `000.zip` is temporarily unreadable or `log.v3.json` parsing fails), `ct-archive-serve` MUST respond to `GET /logs.v3.json` with HTTP `503` (temporarily unavailable), and SHOULD log an error describing the refresh failure.
     - When responding `503`, the server SHOULD return `Content-Type: application/json` with a small error body (e.g., `{"error":"temporarily unavailable"}`) rather than a log list v3 document.
     - Once a subsequent refresh attempt succeeds, `ct-archive-serve` MUST resume serving `200` with the newly generated snapshot.
-    - `ct-archive-serve` SHOULD attempt an initial refresh at startup and then refresh periodically on `CT_MONITOR_JSON_REFRESH_INTERVAL`; refresh work MUST NOT occur on the request hot path.
+    - `ct-archive-serve` SHOULD attempt an initial refresh at startup and then refresh periodically on `CT_LOGLISTV3_JSON_REFRESH_INTERVAL`; refresh work MUST NOT occur on the request hot path.
   - **Refresh concurrency protection**:
-    - `ct-archive-serve` MUST serialize refresh operations using mutex protection to prevent concurrent refreshes (e.g., if a refresh takes longer than `CT_MONITOR_JSON_REFRESH_INTERVAL`, subsequent refresh attempts MUST wait for the in-progress refresh to complete rather than running concurrently).
-    - This protection applies to both `MonitorJSONBuilder` refresh operations and `ArchiveIndex` refresh operations to prevent resource waste (e.g., concurrent ZIP file opens, concurrent disk scans).
-  - **ZIP optimization for monitor.json building**:
-    - When building a monitor.json snapshot, `ct-archive-serve` MUST open each `000.zip` file only once per log to extract both `log.v3.json` and check for `issuer/` entries, rather than opening the same ZIP file twice. This optimization reduces startup time and resource usage when processing many logs with large ZIP files.
-  - **Mtime-based caching for monitor.json building**:
+    - `ct-archive-serve` MUST serialize refresh operations using mutex protection to prevent concurrent refreshes (e.g., if a refresh takes longer than `CT_LOGLISTV3_JSON_REFRESH_INTERVAL`, subsequent refresh attempts MUST wait for the in-progress refresh to complete rather than running concurrently).
+    - This protection applies to both `LogListV3JSONBuilder` refresh operations and `ArchiveIndex` refresh operations to prevent resource waste (e.g., concurrent ZIP file opens, concurrent disk scans).
+  - **ZIP optimization for logs.v3.json building**:
+    - When building a logs.v3.json snapshot, `ct-archive-serve` MUST open each `000.zip` file only once per log to extract both `log.v3.json` and check for `issuer/` entries, rather than opening the same ZIP file twice. This optimization reduces startup time and resource usage when processing many logs with large ZIP files.
+  - **Mtime-based caching for logs.v3.json building**:
     - `ct-archive-serve` MUST track the modification time (mtime) of each `000.zip` file and cache the extracted `log.v3.json` data and `has_issuers` flag.
     - Before opening a `000.zip` file during refresh, `ct-archive-serve` MUST check the file's current mtime. If the mtime matches the cached mtime, `ct-archive-serve` MUST use the cached data without opening the ZIP file, avoiding unnecessary ZIP reads for unchanged files.
     - If the mtime has changed, `ct-archive-serve` MUST re-read the ZIP file and update the cache with the new mtime and data.
@@ -184,8 +185,8 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
   ```
 - **FR-006b**: For each generated `tiled_logs[]` entry, `ct-archive-serve` MUST ensure the entry is valid for common log list v3 consumers: it MUST provide either `url` (RFC6962) OR (`submission_url` + `monitoring_url`) (static-ct-api), but MUST NOT provide both. For archives, the server MUST publish static-ct-api URLs and therefore MUST NOT include `url` in the generated `tiled_logs[]` entries.
 - **FR-006a**: For each generated `tiled_logs[]` entry, `ct-archive-serve` MUST set `has_issuers=true` if and only if the corresponding archive folder’s `000.zip` contains one or more entries under `issuer/` (determined from zip metadata; no full-zip decompression).
-- **FR-007**: `ct-archive-serve` MUST provide environment variables to control `monitor.json` generation, including:
-  - `CT_MONITOR_JSON_REFRESH_INTERVAL` (default: `10m`) — optimized for large archive sets (100+ logs, 10TB+ data); operators with smaller sets may reduce this interval
+- **FR-007**: `ct-archive-serve` MUST provide environment variables to control `logs.v3.json` generation, including:
+  - `CT_LOGLISTV3_JSON_REFRESH_INTERVAL` (default: `10m`) — optimized for large archive sets (100+ logs, 10TB+ data); operators with smaller sets may reduce this interval
 - **FR-008**: `ct-archive-serve` MUST map requested tile paths to the correct subtree zip part according to the `photocamera-archiver` subtree layout:
   - For hash tiles, a tile at level \(L\) and index \(N\) has \(leafStart = N \cdot 256^{L+1}\).
   - `photocamera-archiver` splits the log by level-2 tiles, each spanning \(256^3\) leaves, so for requests where \(L \le 2\) (and for data tiles), the subtree zip index MUST be derived as:
@@ -239,7 +240,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
   - `CT_HTTP_READ_TIMEOUT` (default: `0` meaning “no explicit read timeout”)
   - `CT_HTTP_TRUSTED_SOURCES` (default: empty)
     - CSV list of trusted request source IPs and/or CIDR ranges (e.g., `127.0.0.1,10.0.0.0/8,192.168.1.10/32`)
-    - When empty/unset, **no sources are trusted** and `X-Forwarded-Host`/`X-Forwarded-Proto` MUST be ignored for `/monitor.json` URL formation (but MUST still be logged; see `NFR-010`).
+    - When empty/unset, **no sources are trusted** and `X-Forwarded-Host`/`X-Forwarded-Proto` MUST be ignored for `/logs.v3.json` URL formation (but MUST still be logged; see `NFR-010`).
     - Invalid entries MUST fail startup with an invalid configuration error.
 
 ### Non-Functional Requirements
@@ -255,15 +256,15 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
 - **NFR-006**: The server MUST bound resource usage for its performance optimizations:
   - the number of open zip parts MUST be capped (`CT_ZIP_CACHE_MAX_OPEN`)
   - cached indices and open-file state MUST be evictable (e.g., LRU) to handle large working sets
-- **NFR-007**: The server MUST stream responses and MUST NOT buffer full zip entries into memory (except for small cached responses like `monitor.json`).
+- **NFR-007**: The server MUST stream responses and MUST NOT buffer full zip entries into memory (except for small cached responses like `logs.v3.json`).
 - **NFR-008**: The server MUST be safe to deploy behind a reverse proxy and MUST NOT attempt to enforce transport/security controls that are expected at the reverse proxy boundary:
   - No TLS termination (plain HTTP only; default listen port 8080)
   - No in-process rate limiting (rate limiting is expected to be performed by the reverse proxy)
-  - No hostname or transport validation (the server treats `Host`/`X-Forwarded-*` as opaque inputs for `/monitor.json` URL formation)
-  - Production deployments MUST place `ct-archive-serve` behind a reverse proxy that enforces TLS and rate limiting and forwards `X-Forwarded-*` as required for `/monitor.json` URL formation.
+  - No hostname or transport validation (the server treats `Host`/`X-Forwarded-*` as opaque inputs for `/logs.v3.json` URL formation)
+  - Production deployments MUST place `ct-archive-serve` behind a reverse proxy that enforces TLS and rate limiting and forwards `X-Forwarded-*` as required for `/logs.v3.json` URL formation.
   - When using a reverse proxy, deployments SHOULD set `CT_HTTP_TRUSTED_SOURCES` to the proxy’s source IPs/CIDRs so `X-Forwarded-*` is only honored from that boundary.
 - **NFR-009**: `ct-archive-serve` request/serving Prometheus metrics MUST be low-cardinality to avoid metric blowout:
-  - Request/serving metrics MUST be limited to (a) `/monitor.json` and (b) per-`<log>` aggregates for all `/<log>/...` serving combined
+  - Request/serving metrics MUST be limited to (a) `/logs.v3.json` and (b) per-`<log>` aggregates for all `/<log>/...` serving combined
   - Request/serving metrics MUST NOT be labeled by full request path, tile coordinates, endpoint name, or status code
 - **NFR-010**: Logs MUST be structured (JSON) and suitable for production operations behind a reverse proxy:
   - The server MUST log errors with clear context (including request path and derived `<log>` when applicable) without leaking secrets
@@ -275,7 +276,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
     - HTTP request logs for successful responses (HTTP 2xx) MUST be emitted only when `-v/--verbose` is enabled; non-2xx responses MUST be logged regardless of `-v`
   - **Startup debug logging**: When `-d/--debug` is enabled, the server MUST emit detailed debug logs during startup phases, including:
     - Archive discovery progress (scanning directory, finding zip parts, log count)
-    - Monitor.json snapshot building progress (processing each log, extracting `log.v3.json`, checking for issuer entries)
+    - Logs.v3.json snapshot building progress (processing each log, extracting `log.v3.json`, checking for issuer entries)
     - HTTP listener establishment (confirming TCP port binding)
     - These debug logs aid in diagnosing startup stalling issues and performance bottlenecks
 - **NFR-011**: `ct-archive-serve` MUST meet repository code-quality and security gates for Go code:
@@ -303,7 +304,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
 - **Archive directory**: A filesystem directory containing per-log archive folders, each containing `000.zip`, `001.zip`, … generated by `photocamera-archiver`.
 - **Zip entry**: A file within a subtree zip (e.g., `checkpoint`, `tile/0/000`, `tile/data/000`, `issuer/<hex>`).
 - **Tile request**: A request for a Static-CT tile path, including tile type (hash/data), level, index, and optional partial width.
-- **Monitor list**: The `GET /monitor.json` JSON document listing discovered logs under `operators[].tiled_logs[]`.
+- **Monitor list**: The `GET /logs.v3.json` JSON document listing discovered logs under `operators[].tiled_logs[]`.
 
 ## Success Criteria *(mandatory)*
 
@@ -312,8 +313,8 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
 - **SC-001**: A test client can fetch `GET /<log>/checkpoint` and receive a valid checkpoint payload (byte-for-byte match with the archived entry).
 - **SC-002**: A test client can fetch at least one hash tile and one data tile from the archive set and receive the exact bytes stored in the zip entries.
 - **SC-003**: Requests for invalid or missing paths reliably return `404` without exposing filesystem contents.
-- **SC-004**: A test client can fetch `GET /monitor.json` and receive a JSON document with one `tiled_logs` entry per discovered archive folder (derived from its `000.zip` → `log.v3.json`), with `submission_url` and `monitoring_url` pointing at `<publicBaseURL>/<log>` where `<publicBaseURL>` is derived from the incoming request (per `FR-006`).
-- **SC-005**: In `GET /monitor.json`, each `tiled_logs[].has_issuers` value matches whether that log’s `000.zip` contains any `issuer/` entries.
+- **SC-004**: A test client can fetch `GET /logs.v3.json` and receive a JSON document with one `tiled_logs` entry per discovered archive folder (derived from its `000.zip` → `log.v3.json`), with `submission_url` and `monitoring_url` pointing at `<publicBaseURL>/<log>` where `<publicBaseURL>` is derived from the incoming request (per `FR-006`).
+- **SC-005**: In `GET /logs.v3.json`, each `tiled_logs[].has_issuers` value matches whether that log’s `000.zip` contains any `issuer/` entries.
 - **SC-006**: Under a large-working-set access pattern (requests spread across many zip parts), profiling/benchmarks demonstrate that request-path CPU time is dominated by zip entry decompression + disk reads + network writes, and not by avoidable overhead such as archive rescans, repeated central-directory parsing, or lock contention. At minimum, the performance validation MUST demonstrate:
   - archive discovery / directory walking does not occur on the request hot path (only in startup and the periodic refresh loop)
   - repeated zip central-directory parsing is amortized by caching for hot zip parts (cache hit behavior is observable in metrics/logs or benchmark instrumentation)

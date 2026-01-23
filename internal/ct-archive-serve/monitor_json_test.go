@@ -8,9 +8,11 @@ import (
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/google/certificate-transparency-go/loglist3"
 )
 
-func TestMonitorSnapshotBuilder_ExtractLogV3JSON(t *testing.T) {
+func TestLogListV3JSONSnapshotBuilder_ExtractLogV3JSON(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -31,7 +33,7 @@ func TestMonitorSnapshotBuilder_ExtractLogV3JSON(t *testing.T) {
 		ArchivePath:          root,
 		ArchiveFolderPattern: "ct_*",
 	}
-	builder := NewMonitorJSONBuilder(cfg, zr, nil, nil)
+	builder := NewLogListV3JSONBuilder(cfg, zr, nil, nil)
 
 	logV3, err := builder.extractLogV3JSON(zipPath)
 	if err != nil {
@@ -70,7 +72,7 @@ func TestMonitorSnapshotBuilder_HasIssuers_True(t *testing.T) {
 		ArchivePath:          root,
 		ArchiveFolderPattern: "ct_*",
 	}
-	builder := NewMonitorJSONBuilder(cfg, zr, nil, nil)
+	builder := NewLogListV3JSONBuilder(cfg, zr, nil, nil)
 
 	hasIssuers, err := builder.checkHasIssuers(zipPath)
 	if err != nil {
@@ -104,7 +106,7 @@ func TestMonitorSnapshotBuilder_HasIssuers_False(t *testing.T) {
 		ArchivePath:          root,
 		ArchiveFolderPattern: "ct_*",
 	}
-	builder := NewMonitorJSONBuilder(cfg, zr, nil, nil)
+	builder := NewLogListV3JSONBuilder(cfg, zr, nil, nil)
 
 	hasIssuers, err := builder.checkHasIssuers(zipPath)
 	if err != nil {
@@ -164,7 +166,7 @@ func TestMonitorSnapshotBuilder_RemoveURL_AddSubmissionMonitoring(t *testing.T) 
 	}
 }
 
-func TestMonitorJSONBuilder_RefreshFailure_503(t *testing.T) {
+func TestLogListV3JSONBuilder_RefreshFailure_503(t *testing.T) {
 	t.Parallel()
 
 	// Test that when refresh fails (e.g., archive index is nil), we get 503 behavior
@@ -174,11 +176,11 @@ func TestMonitorJSONBuilder_RefreshFailure_503(t *testing.T) {
 	cfg := Config{
 		ArchivePath:                "/nonexistent",
 		ArchiveFolderPattern:       "ct_*",
-		MonitorJSONRefreshInterval: 100 * time.Millisecond,
+		LogListV3JSONRefreshInterval: 100 * time.Millisecond,
 	}
 
 	// Create builder with nil archiveIndex (will cause BuildSnapshot to fail)
-	builder := NewMonitorJSONBuilder(cfg, zr, nil, nil)
+	builder := NewLogListV3JSONBuilder(cfg, zr, nil, nil)
 
 	// Manually trigger a refresh that will fail
 	_, err := builder.BuildSnapshot("http://example.com")
@@ -198,7 +200,75 @@ func TestMonitorJSONBuilder_RefreshFailure_503(t *testing.T) {
 	}
 }
 
-// mustCreateZipForMonitor is a helper to create zip files for monitor.json tests.
+func TestLogListV3JSONBuilder_LogListV3Validation(t *testing.T) {
+	t.Parallel()
+
+	// Test that the generated logs.v3.json can be parsed and validated by loglist3 library
+	// per spec.md FR-006 validation requirement
+	root := t.TempDir()
+	logFolder := filepath.Join(root, "ct_test_log")
+	if err := os.MkdirAll(logFolder, 0o700); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	// Use valid base64-encoded values for log_id and key (loglist3 expects base64-encoded byte arrays)
+	// log_id: base64("test_log_id_32_bytes_long!!") = "dGVzdF9sb2dfaWRfMzJfYnl0ZXNfbG9uZyEh"
+	// key: base64("test_key_32_bytes_long_data!!") = "dGVzdF9rZXlfMzJfYnl0ZXNfbG9uZ19kYXRhISE="
+	zipPath := filepath.Join(logFolder, "000.zip")
+	mustCreateZipForMonitor(t, zipPath, map[string][]byte{
+		"log.v3.json": []byte(`{"description":"Test Log","log_id":"dGVzdF9sb2dfaWRfMzJfYnl0ZXNfbG9uZyEh","key":"dGVzdF9rZXlfMzJfYnl0ZXNfbG9uZ19kYXRhISE=","mmd":86400,"log_type":"prod","state":{}}`),
+	})
+
+	zic := NewZipIntegrityCache(5*time.Minute, time.Now, nil, nil)
+	zr := NewZipReader(zic)
+
+	cfg := Config{
+		ArchivePath:          root,
+		ArchiveFolderPattern: "ct_*",
+	}
+	archiveIndex, err := NewArchiveIndex(cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("NewArchiveIndex() error = %v", err)
+	}
+
+	builder := NewLogListV3JSONBuilder(cfg, zr, archiveIndex, nil)
+
+	// Build a snapshot
+	snap, err := builder.BuildSnapshot("https://example.com")
+	if err != nil {
+		t.Fatalf("BuildSnapshot() error = %v", err)
+	}
+
+	// Serialize to JSON
+	jsonBytes, err := json.Marshal(snap)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+
+	// Validate using loglist3 library - this will return an error if the JSON
+	// doesn't conform to the v3 schema
+	logList, err := loglist3.NewFromJSON(jsonBytes)
+	if err != nil {
+		t.Fatalf("loglist3.NewFromJSON() error = %v (logs.v3.json does not conform to v3 schema)", err)
+	}
+
+	// Verify basic structure
+	if logList.Version != "3.0" {
+		t.Errorf("logList.Version = %q, want %q", logList.Version, "3.0")
+	}
+	if len(logList.Operators) != 1 {
+		t.Fatalf("logList.Operators length = %d, want 1", len(logList.Operators))
+	}
+	op := logList.Operators[0]
+	if op.Name != "ct-archive-serve" {
+		t.Errorf("op.Name = %q, want %q", op.Name, "ct-archive-serve")
+	}
+	if len(op.TiledLogs) != 1 {
+		t.Errorf("op.TiledLogs length = %d, want 1", len(op.TiledLogs))
+	}
+}
+
+// mustCreateZipForMonitor is a helper to create zip files for logs.v3.json tests.
 func mustCreateZipForMonitor(t *testing.T, path string, files map[string][]byte) {
 	t.Helper()
 

@@ -12,7 +12,7 @@ func TestParseRoute(t *testing.T) {
 		wantLog string
 		want    RouteKind
 	}{
-		{name: "monitor json", path: "/monitor.json", wantOK: true, want: RouteMonitorJSON},
+		{name: "logs v3 json", path: "/logs.v3.json", wantOK: true, want: RouteLogListV3JSON},
 		{name: "metrics", path: "/metrics", wantOK: true, want: RouteMetrics},
 		{name: "checkpoint", path: "/digicert/checkpoint", wantOK: true, want: RouteCheckpoint, wantLog: "digicert"},
 		{name: "log v3", path: "/digicert/log.v3.json", wantOK: true, want: RouteLogV3JSON, wantLog: "digicert"},

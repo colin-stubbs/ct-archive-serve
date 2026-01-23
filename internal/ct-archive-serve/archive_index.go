@@ -190,7 +190,7 @@ func (ai *ArchiveIndex) SelectZipPart(log string, tileLevel uint8, tileIndex uin
 	return 0, false
 }
 
-// GetAllLogs returns a copy of all discovered logs (for monitor.json building).
+// GetAllLogs returns a copy of all discovered logs (for logs.v3.json building).
 func (ai *ArchiveIndex) GetAllLogs() ArchiveSnapshot {
 	if ai == nil {
 		return ArchiveSnapshot{Logs: make(map[string]ArchiveLog)}

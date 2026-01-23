@@ -27,24 +27,24 @@ type LogV3Entry struct {
 	URL         string                 `json:"url,omitempty"` // Will be removed per FR-006b
 }
 
-// MonitorJSONSnapshot is an immutable snapshot of the monitor.json state.
-type MonitorJSONSnapshot struct {
+// LogListV3JSONSnapshot is an immutable snapshot of the logs.v3.json state.
+type LogListV3JSONSnapshot struct {
 	Version          string                 `json:"version"`
 	LogListTimestamp string                 `json:"log_list_timestamp"`
-	Operators        []MonitorJSONOperator  `json:"operators"`
+	Operators        []LogListV3JSONOperator  `json:"operators"`
 	LastError        error                  `json:"-"` // Internal: tracks refresh failure state (not in JSON)
 }
 
-// MonitorJSONOperator represents the single operator in monitor.json.
-type MonitorJSONOperator struct {
+// LogListV3JSONOperator represents the single operator in loglist v3 JSON.
+type LogListV3JSONOperator struct {
 	Name      string            `json:"name"`
 	Email     []string          `json:"email"`
 	Logs      []interface{}     `json:"logs"`
-	TiledLogs []MonitorJSONTiledLog `json:"tiled_logs"`
+	TiledLogs []LogListV3JSONTiledLog `json:"tiled_logs"`
 }
 
-// MonitorJSONTiledLog represents a tiled log entry in monitor.json.
-type MonitorJSONTiledLog struct {
+// LogListV3JSONTiledLog represents a tiled log entry in logs.v3.json.
+type LogListV3JSONTiledLog struct {
 	Description    string                 `json:"description"`
 	LogID          string                 `json:"log_id"`
 	Key            string                 `json:"key"`
@@ -64,14 +64,14 @@ type zipFileCacheEntry struct {
 	hasIssuers bool
 }
 
-// MonitorJSONBuilder builds monitor.json snapshots from discovered archives.
-type MonitorJSONBuilder struct {
+// LogListV3JSONBuilder builds logs.v3.json snapshots from discovered archives.
+type LogListV3JSONBuilder struct {
 	zipReader    *ZipReader
 	archiveIndex *ArchiveIndex
 	logger       *slog.Logger
 	cfg          Config
 
-	snap atomic.Value // stores *MonitorJSONSnapshot
+	snap atomic.Value // stores *LogListV3JSONSnapshot
 
 	// refreshMu serializes refresh operations to prevent concurrent refreshes
 	// (e.g., if a refresh takes longer than the refresh interval)
@@ -82,14 +82,14 @@ type MonitorJSONBuilder struct {
 	zipCache map[string]zipFileCacheEntry
 }
 
-// NewMonitorJSONBuilder constructs a new MonitorJSONBuilder.
-func NewMonitorJSONBuilder(
+// NewLogListV3JSONBuilder constructs a new LogListV3JSONBuilder.
+func NewLogListV3JSONBuilder(
 	cfg Config,
 	zipReader *ZipReader,
 	archiveIndex *ArchiveIndex,
 	logger *slog.Logger,
-) *MonitorJSONBuilder {
-	return &MonitorJSONBuilder{
+) *LogListV3JSONBuilder {
+	return &LogListV3JSONBuilder{
 		zipReader:    zipReader,
 		archiveIndex: archiveIndex,
 		logger:       logger,
@@ -98,8 +98,8 @@ func NewMonitorJSONBuilder(
 	}
 }
 
-// GetSnapshot returns the current monitor.json snapshot.
-func (b *MonitorJSONBuilder) GetSnapshot() *MonitorJSONSnapshot {
+// GetSnapshot returns the current loglist v3 JSON snapshot.
+func (b *LogListV3JSONBuilder) GetSnapshot() *LogListV3JSONSnapshot {
 	if b == nil {
 		return nil
 	}
@@ -107,10 +107,10 @@ func (b *MonitorJSONBuilder) GetSnapshot() *MonitorJSONSnapshot {
 	if val == nil {
 		return nil
 	}
-	snap, ok := val.(*MonitorJSONSnapshot)
+	snap, ok := val.(*LogListV3JSONSnapshot)
 	if !ok {
-		// This should never happen - atomic.Value only stores *MonitorJSONSnapshot
-		panic("monitor JSON builder: invalid type in atomic.Value")
+		// This should never happen - atomic.Value only stores *LogListV3JSONSnapshot
+		panic("loglist v3 JSON builder: invalid type in atomic.Value")
 	}
 	return snap
 }
@@ -119,7 +119,7 @@ func (b *MonitorJSONBuilder) GetSnapshot() *MonitorJSONSnapshot {
 // extracts/parses log.v3.json and checks for issuer/ entries. This avoids opening
 // the same ZIP file twice, which is expensive for large ZIPs with many entries.
 // It uses mtime-based caching to avoid re-reading unchanged zip files.
-func (b *MonitorJSONBuilder) extractLogV3JSONAndCheckIssuers(zipPath string) (*LogV3Entry, bool, error) {
+func (b *LogListV3JSONBuilder) extractLogV3JSONAndCheckIssuers(zipPath string) (*LogV3Entry, bool, error) {
 	// Check mtime to see if we can use cached data
 	stat, err := os.Stat(zipPath)
 	if err != nil {
@@ -217,7 +217,7 @@ func (b *MonitorJSONBuilder) extractLogV3JSONAndCheckIssuers(zipPath string) (*L
 // extractLogV3JSON extracts and parses log.v3.json from a zip part.
 //
 // Deprecated: Use extractLogV3JSONAndCheckIssuers to avoid opening ZIP twice.
-func (b *MonitorJSONBuilder) extractLogV3JSON(zipPath string) (*LogV3Entry, error) {
+func (b *LogListV3JSONBuilder) extractLogV3JSON(zipPath string) (*LogV3Entry, error) {
 	entry, _, err := b.extractLogV3JSONAndCheckIssuers(zipPath)
 	return entry, err
 }
@@ -225,14 +225,14 @@ func (b *MonitorJSONBuilder) extractLogV3JSON(zipPath string) (*LogV3Entry, erro
 // checkHasIssuers checks if a zip part contains any issuer/ entries (metadata-only check).
 //
 // Deprecated: Use extractLogV3JSONAndCheckIssuers to avoid opening ZIP twice.
-func (b *MonitorJSONBuilder) checkHasIssuers(zipPath string) (bool, error) {
+func (b *LogListV3JSONBuilder) checkHasIssuers(zipPath string) (bool, error) {
 	_, hasIssuers, err := b.extractLogV3JSONAndCheckIssuers(zipPath)
 	return hasIssuers, err
 }
 
-// BuildSnapshot builds a new monitor.json snapshot from the current archive index state.
+// BuildSnapshot builds a new logs.v3.json snapshot from the current archive index state.
 // The publicBaseURL is used to set submission_url and monitoring_url per spec.md FR-006.
-func (b *MonitorJSONBuilder) BuildSnapshot(publicBaseURL string) (*MonitorJSONSnapshot, error) {
+func (b *LogListV3JSONBuilder) BuildSnapshot(publicBaseURL string) (*LogListV3JSONSnapshot, error) {
 	if b.archiveIndex == nil {
 		return nil, errors.New("archive index not initialized")
 	}
@@ -240,10 +240,10 @@ func (b *MonitorJSONBuilder) BuildSnapshot(publicBaseURL string) (*MonitorJSONSn
 	snap := b.archiveIndex.GetAllLogs()
 
 	if b.logger != nil {
-		b.logger.Debug("Building monitor.json snapshot", "log_count", len(snap.Logs))
+		b.logger.Debug("Building logs.v3.json snapshot", "log_count", len(snap.Logs))
 	}
 
-	var tiledLogs []MonitorJSONTiledLog
+	var tiledLogs []LogListV3JSONTiledLog
 	logNames := make([]string, 0, len(snap.Logs))
 	for logName := range snap.Logs {
 		logNames = append(logNames, logName)
@@ -255,7 +255,7 @@ func (b *MonitorJSONBuilder) BuildSnapshot(publicBaseURL string) (*MonitorJSONSn
 		zipPath := log.FolderPath + "/000.zip"
 
 		if b.logger != nil {
-			b.logger.Debug("Processing log for monitor.json", "log", logName, "progress", fmt.Sprintf("%d/%d", i+1, len(logNames)), "zip_path", zipPath)
+			b.logger.Debug("Processing log for logs.v3.json", "log", logName, "progress", fmt.Sprintf("%d/%d", i+1, len(logNames)), "zip_path", zipPath)
 		}
 
 		// Extract log.v3.json and check for issuer entries in a single ZIP open
@@ -274,7 +274,7 @@ func (b *MonitorJSONBuilder) BuildSnapshot(publicBaseURL string) (*MonitorJSONSn
 		}
 
 		// Build tiled log entry (remove url, add submission_url/monitoring_url per FR-006b)
-		tiledLog := MonitorJSONTiledLog{
+		tiledLog := LogListV3JSONTiledLog{
 			Description:   logV3.Description,
 			LogID:         logV3.LogID,
 			Key:           logV3.Key,
@@ -289,7 +289,7 @@ func (b *MonitorJSONBuilder) BuildSnapshot(publicBaseURL string) (*MonitorJSONSn
 
 		tiledLogs = append(tiledLogs, tiledLog)
 		if b.logger != nil {
-			b.logger.Debug("Added log to monitor.json snapshot", "log", logName, "has_issuers", hasIssuers)
+			b.logger.Debug("Added log to loglist v3 JSON snapshot", "log", logName, "has_issuers", hasIssuers)
 		}
 	}
 
@@ -311,13 +311,13 @@ func (b *MonitorJSONBuilder) BuildSnapshot(publicBaseURL string) (*MonitorJSONSn
 	}
 
 	if b.logger != nil {
-		b.logger.Debug("Monitor.json snapshot build complete", "tiled_log_count", len(tiledLogs))
+		b.logger.Debug("Logs.v3.json snapshot build complete", "tiled_log_count", len(tiledLogs))
 	}
 
-	return &MonitorJSONSnapshot{
+	return &LogListV3JSONSnapshot{
 		Version:          "3.0",
 		LogListTimestamp: time.Now().UTC().Format(time.RFC3339),
-		Operators: []MonitorJSONOperator{
+		Operators: []LogListV3JSONOperator{
 			{
 				Name:      "ct-archive-serve",
 				Email:     []string{},
@@ -329,25 +329,25 @@ func (b *MonitorJSONBuilder) BuildSnapshot(publicBaseURL string) (*MonitorJSONSn
 	}, nil
 }
 
-// Start begins the periodic refresh loop for monitor.json.
-// It performs an initial refresh at startup, then refreshes on CT_MONITOR_JSON_REFRESH_INTERVAL.
+// Start begins the periodic refresh loop for logs.v3.json.
+// It performs an initial refresh at startup, then refreshes on CT_LOGLISTV3_JSON_REFRESH_INTERVAL.
 // Note: publicBaseURL is a placeholder for the refresh loop; actual URLs are set per-request.
-func (b *MonitorJSONBuilder) Start(ctx context.Context) {
+func (b *LogListV3JSONBuilder) Start(ctx context.Context) {
 	if b == nil {
 		return
 	}
 
 	// Initial refresh at startup (using placeholder URL; will be overridden per-request)
 	if b.logger != nil {
-		b.logger.Debug("Starting initial monitor.json refresh")
+		b.logger.Debug("Starting initial logs.v3.json refresh")
 	}
 	b.refreshOnce("http://placeholder")
 	if b.logger != nil {
-		b.logger.Debug("Initial monitor.json refresh completed")
+		b.logger.Debug("Initial loglist v3 JSON refresh completed")
 	}
 
 	// Periodic refresh loop
-	t := time.NewTicker(b.cfg.MonitorJSONRefreshInterval)
+	t := time.NewTicker(b.cfg.LogListV3JSONRefreshInterval)
 	go func() {
 		defer t.Stop()
 		for {
@@ -365,22 +365,22 @@ func (b *MonitorJSONBuilder) Start(ctx context.Context) {
 // refreshOnce attempts to build a new snapshot and update the atomic value.
 // On success, LastError is nil. On failure, LastError is set and the snapshot may be nil.
 // This method is protected by refreshMu to prevent concurrent refreshes.
-func (b *MonitorJSONBuilder) refreshOnce(publicBaseURL string) {
+func (b *LogListV3JSONBuilder) refreshOnce(publicBaseURL string) {
 	b.refreshMu.Lock()
 	defer b.refreshMu.Unlock()
 
 	snap, err := b.BuildSnapshot(publicBaseURL)
 	if err != nil {
 		if b.logger != nil {
-			b.logger.Error("Monitor.json refresh failed", "error", err)
+			b.logger.Error("Logs.v3.json refresh failed", "error", err)
 		}
 		// Store snapshot with error state (will cause 503 responses per FR-006)
 		// Always store a snapshot, even on error, so GetSnapshot can return error state
 		if snap == nil {
-			snap = &MonitorJSONSnapshot{
+			snap = &LogListV3JSONSnapshot{
 				Version:          "3.0",
 				LogListTimestamp: time.Now().UTC().Format(time.RFC3339),
-				Operators:        []MonitorJSONOperator{{Name: "ct-archive-serve", Email: []string{}, Logs: []interface{}{}, TiledLogs: []MonitorJSONTiledLog{}}},
+				Operators:        []LogListV3JSONOperator{{Name: "ct-archive-serve", Email: []string{}, Logs: []interface{}{}, TiledLogs: []LogListV3JSONTiledLog{}}},
 				LastError:        err,
 			}
 		} else {
@@ -391,7 +391,7 @@ func (b *MonitorJSONBuilder) refreshOnce(publicBaseURL string) {
 }
 
 // GetSnapshotForRequest returns a snapshot with URLs set from the request's publicBaseURL.
-func (b *MonitorJSONBuilder) GetSnapshotForRequest(publicBaseURL string) *MonitorJSONSnapshot {
+func (b *LogListV3JSONBuilder) GetSnapshotForRequest(publicBaseURL string) *LogListV3JSONSnapshot {
 	if b == nil {
 		return nil
 	}
@@ -401,17 +401,17 @@ func (b *MonitorJSONBuilder) GetSnapshotForRequest(publicBaseURL string) *Monito
 	}	// Clone snapshot and update URLs per request
 	clone := *snap
 	if len(clone.Operators) > 0 && len(clone.Operators[0].TiledLogs) > 0 {
-		clone.Operators = make([]MonitorJSONOperator, len(snap.Operators))
+		clone.Operators = make([]LogListV3JSONOperator, len(snap.Operators))
 		for i, op := range snap.Operators {
-			clone.Operators[i] = MonitorJSONOperator{
+			clone.Operators[i] = LogListV3JSONOperator{
 				Name:      op.Name,
 				Email:     op.Email,
 				Logs:      op.Logs,
-				TiledLogs: make([]MonitorJSONTiledLog, len(op.TiledLogs)),
+				TiledLogs: make([]LogListV3JSONTiledLog, len(op.TiledLogs)),
 			}
 			for j, tlog := range op.TiledLogs {
 				// Update URLs using stored log name
-				clone.Operators[i].TiledLogs[j] = MonitorJSONTiledLog{
+				clone.Operators[i].TiledLogs[j] = LogListV3JSONTiledLog{
 					Description:   tlog.Description,
 					LogID:        tlog.LogID,
 					Key:          tlog.Key,

@@ -12,7 +12,7 @@
 
 ## Requirement Completeness
 
-- [x] CHK001 Are all **supported routes** enumerated in one place (including `/monitor.json`, `/metrics`, and every `/<log>/...` path) without omissions? [Completeness, Spec §FR-002]
+- [x] CHK001 Are all **supported routes** enumerated in one place (including `/logs.v3.json`, `/metrics`, and every `/<log>/...` path) without omissions? [Completeness, Spec §FR-002]
   - Notes: Route list is explicit in `FR-002` and reinforced by `contracts/http.md`.
 - [x] CHK002 Are **HTTP methods** explicitly constrained (e.g., support GET+HEAD; 405 for others) for every endpoint? [Completeness, Spec §FR-002a]
 - [x] CHK003 Are **response status codes** defined for all endpoints for (a) success, (b) missing content, and (c) invalid inputs? [Completeness, Spec §FR-009; Spec §Edge Cases]
@@ -20,7 +20,7 @@
 - [x] CHK004 Are **Content-Type rules** specified for every served asset class (monitor list, checkpoint, tiles, issuer, JSON files)? [Completeness, Spec §FR-002]
 - [x] CHK004a Are **HTTP server timeout/limit** knobs fully enumerated and justified for safety under slow/abusive clients (ReadHeaderTimeout, IdleTimeout, MaxHeaderBytes, etc.)? [Safety, Spec §FR-012]
 - [x] CHK005 Are the **zip-part naming conventions** and required files (`000.zip`, `001.zip`, …; `checkpoint`, `log.v3.json`, `tile/...`, `issuer/...`) explicitly stated as requirements (not implied)? [Gap]
-  - Notes: Zip part naming (`NNN.zip`) is now explicit under `FR-003`; request→zip-entry mapping is explicit under `FR-009`; `/monitor.json` uses `000.zip` + `log.v3.json` per `FR-006`.
+  - Notes: Zip part naming (`NNN.zip`) is now explicit under `FR-003`; request→zip-entry mapping is explicit under `FR-009`; `/logs.v3.json` uses `000.zip` + `log.v3.json` per `FR-006`.
 
 ## Requirement Clarity
 
@@ -30,10 +30,10 @@
 - [x] CHK008 Is the mapping from request path → **zip entry path** fully defined for each endpoint (including exact prefixes like `tile/` vs `tile/data/` and issuer path)? [Clarity, Spec §FR-002; Spec §FR-003]
   - Notes: Mapping is now explicit under `FR-009` examples; `.p/<W>` is treated as literal entry per Edge Cases.
 - [x] CHK008a Is the mapping from (tile level/index) → **subtree zip index** deterministic and testable (explicit formula, including L=0/1/2/data and L>=3 shared-metadata rule)? [Clarity, Spec §FR-008]
-- [x] CHK009 Is “`monitor.json` compatible with common log list v3 consumers” backed by a clear statement of the **minimum required JSON fields and structure**? [Gap, Spec §FR-006]
+- [x] CHK009 Is “`logs.v3.json` compatible with common log list v3 consumers” backed by a clear statement of the **minimum required JSON fields and structure**? [Gap, Spec §FR-006]
   - Notes: `FR-006` specifies minimum required top-level shape + deterministic sort + example.
 - [x] CHK010 Is “periodically refresh” precisely defined (startup build, interval behavior, clock skew tolerance) and measurable? [Clarity, Spec §FR-006; Spec §FR-007]
-  - Notes: Refresh interval is `CT_MONITOR_JSON_REFRESH_INTERVAL` and startup refresh expectation is now described in `FR-006`.
+  - Notes: Refresh interval is `CT_LOGLISTV3_JSON_REFRESH_INTERVAL` and startup refresh expectation is now described in `FR-006`.
 
 ## Requirement Consistency
 
@@ -46,7 +46,7 @@
 
 - [x] CHK015 Is checkpoint success defined as a **byte-for-byte match** (and is the comparison source defined) for `/<log>/checkpoint`? [Measurability, Spec §SC-001]
 - [x] CHK016 Is tile success defined as **byte-for-byte match** for at least one hash tile and one data tile (and are example tile paths/inputs specified)? [Measurability, Spec §SC-002]
-- [x] CHK017 Is `/monitor.json` success measurable in terms of **one entry per discovered log**, and does the spec define how “discovered” is determined (folder pattern, required files)? [Measurability, Spec §SC-004; Spec §FR-003; Spec §FR-006]
+- [x] CHK017 Is `/logs.v3.json` success measurable in terms of **one entry per discovered log**, and does the spec define how “discovered” is determined (folder pattern, required files)? [Measurability, Spec §SC-004; Spec §FR-003; Spec §FR-006]
 - [x] CHK018 Is `has_issuers` success measurable and unambiguous (metadata-only check; definition of “any issuer entry”)? [Measurability, Spec §FR-006a; Spec §SC-005]
 
 ## Scenario Coverage (Primary / Alternate / Error / Recovery)
@@ -55,7 +55,7 @@
 - [x] CHK020 Are alternate flows specified for **multiple logs** (ambiguity when `<log>` not found; behavior when multiple folders could map to same `<log>`)? [Gap, Spec §FR-003; Spec §FR-003a]
   - Notes: `<log>` not found → `404` (`FR-009`); collisions are a startup error (`FR-003b`).
 - [x] CHK021 Are error flows specified for “zip part exists but entry missing” vs “zip part missing” vs “zip part present but fails integrity checks (503 temporarily unavailable; cached with TTL)” vs “entry unreadable/corrupt zip”? [Coverage, Spec §FR-013]
-- [x] CHK022 Are recovery flows specified for `/monitor.json` refresh failures (serve last good snapshot vs empty vs error; log/metrics expectations)? [Gap, Spec §FR-006; Spec §FR-007]
+- [x] CHK022 Are recovery flows specified for `/logs.v3.json` refresh failures (serve last good snapshot vs empty vs error; log/metrics expectations)? [Gap, Spec §FR-006; Spec §FR-007]
   - Notes: Chosen contract is `503`-until-healthy (not “serve last-good”) per `FR-006` refresh failure behavior.
 
 ## Edge Case Coverage
@@ -79,7 +79,7 @@
 
 - [x] CHK031 Are assumptions about archive layout versioning captured (photocamera-archiver output stability; how to handle unexpected entries/structure changes)? [Assumption, Spec §FR-003; Spec §FR-008]
   - Notes: Layout assumptions are captured in `FR-008` + `FR-009` mapping; unexpected/missing content manifests as `404` (or `503` for integrity failures).
-- [x] CHK032 Are environment variables fully enumerated with defaults and descriptions (including monitor.json vars, performance tuning vars, and HTTP server timeout/limit vars)? [Completeness, Spec §FR-004; Spec §FR-007; Spec §FR-011; Spec §FR-012]
+- [x] CHK032 Are environment variables fully enumerated with defaults and descriptions (including logs.v3.json vars, performance tuning vars, and HTTP server timeout/limit vars)? [Completeness, Spec §FR-004; Spec §FR-007; Spec §FR-011; Spec §FR-012]
   - Notes: Env vars and defaults are specified across `FR-007`, `FR-011`, `FR-012`, and `FR-013`.
 - [x] CHK033 Is compatibility with Static-CT (C2SP/tiled) clients specified with concrete expectations (what “compatible” means) rather than a vague SHOULD? [Gap, Spec §FR-010]
   - Notes: Compatibility is demonstrated concretely by `SC-001`/`SC-002` and the planned compatibility smoke test (`T036`), while `FR-010` remains a SHOULD.
@@ -88,7 +88,7 @@
 
 - [x] CHK034 Is “caching behavior” mentioned in the asset-serving story defined (headers, semantics), or removed to avoid ambiguity? [Ambiguity, Spec §User Story 2]
   - Notes: No HTTP caching headers/semantics are required by the spec.
-- [x] CHK035 Do story/test statements avoid introducing requirements not present elsewhere (e.g., monitor.json fields beyond those required for tiled log discovery) unless explicitly specified? [Conflict, Spec §FR-006; Spec §FR-006a; Tasks §T014]
+- [x] CHK035 Do story/test statements avoid introducing requirements not present elsewhere (e.g., logs.v3.json fields beyond those required for tiled log discovery) unless explicitly specified? [Conflict, Spec §FR-006; Spec §FR-006a; Tasks §T014]
 
 ## Notes
 

@@ -111,7 +111,7 @@ func TestPublicBaseURL_UntrustedSource_UsesHost(t *testing.T) {
 	metrics := NewMetrics(prometheus.NewRegistry())
 	server := NewServer(cfg, logger, metrics, nil, nil, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/monitor.json", nil)
+	req := httptest.NewRequest(http.MethodGet, "/logs.v3.json", nil)
 	req.Host = "example.com"
 	req.RemoteAddr = "192.168.1.100:12345" // untrusted IP
 	req.Header.Set("X-Forwarded-Host", "evil.com")
@@ -137,7 +137,7 @@ func TestPublicBaseURL_TrustedSource_UsesXForwarded(t *testing.T) {
 	metrics := NewMetrics(prometheus.NewRegistry())
 	server := NewServer(cfg, logger, metrics, nil, nil, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/monitor.json", nil)
+	req := httptest.NewRequest(http.MethodGet, "/logs.v3.json", nil)
 	req.Host = "example.com"
 	req.RemoteAddr = "127.0.0.1:12345" // trusted IP
 	req.Header.Set("X-Forwarded-Host", "proxy.example.com")
@@ -163,7 +163,7 @@ func TestPublicBaseURL_TrustedSource_NoXForwarded_UsesHost(t *testing.T) {
 	metrics := NewMetrics(prometheus.NewRegistry())
 	server := NewServer(cfg, logger, metrics, nil, nil, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/monitor.json", nil)
+	req := httptest.NewRequest(http.MethodGet, "/logs.v3.json", nil)
 	req.Host = "example.com"
 	req.RemoteAddr = "127.0.0.1:12345" // trusted IP, but no X-Forwarded-* headers
 
@@ -187,7 +187,7 @@ func TestPublicBaseURL_CommaSeparated_FirstNonEmpty(t *testing.T) {
 	metrics := NewMetrics(prometheus.NewRegistry())
 	server := NewServer(cfg, logger, metrics, nil, nil, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/monitor.json", nil)
+	req := httptest.NewRequest(http.MethodGet, "/logs.v3.json", nil)
 	req.Host = "example.com"
 	req.RemoteAddr = "127.0.0.1:12345"
 	req.Header.Set("X-Forwarded-Host", " , proxy.example.com , other.com")
@@ -213,7 +213,7 @@ func TestPublicBaseURL_SchemeLowercased(t *testing.T) {
 	metrics := NewMetrics(prometheus.NewRegistry())
 	server := NewServer(cfg, logger, metrics, nil, nil, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/monitor.json", nil)
+	req := httptest.NewRequest(http.MethodGet, "/logs.v3.json", nil)
 	req.Host = "example.com"
 	req.RemoteAddr = "127.0.0.1:12345"
 	req.Header.Set("X-Forwarded-Proto", "HTTPS")

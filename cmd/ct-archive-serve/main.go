@@ -40,8 +40,8 @@ func main() {
 		_, _ = fmt.Fprintf(os.Stdout, "    Glob pattern for matching log folders, must end with '*' (default: ct_*)\n")
 		_, _ = fmt.Fprintf(os.Stdout, "    Example: ct_* matches folders like ct_digicert_nessie_2022/\n\n")
 		_, _ = fmt.Fprintf(os.Stdout, "Refresh Intervals:\n")
-		_, _ = fmt.Fprintf(os.Stdout, "  CT_MONITOR_JSON_REFRESH_INTERVAL\n")
-		_, _ = fmt.Fprintf(os.Stdout, "    Interval for refreshing /monitor.json (default: 10m)\n")
+		_, _ = fmt.Fprintf(os.Stdout, "  CT_LOGLISTV3_JSON_REFRESH_INTERVAL\n")
+		_, _ = fmt.Fprintf(os.Stdout, "    Interval for refreshing /logs.v3.json (default: 10m)\n")
 		_, _ = fmt.Fprintf(os.Stdout, "    Format: Go duration (e.g., 10m, 5m, 30s, 1h)\n")
 		_, _ = fmt.Fprintf(os.Stdout, "    Optimized for large archive sets (100+ logs, 10TB+ data)\n\n")
 		_, _ = fmt.Fprintf(os.Stdout, "  CT_ARCHIVE_REFRESH_INTERVAL\n")
@@ -135,19 +135,19 @@ func main() {
 	zipReader := ctarchiveserve.NewZipReader(zipIntegrityCache)
 	zipReader.SetZipPartCache(zipPartCache)
 
-	// Initialize monitor.json builder
-	logger.Debug("Initializing monitor.json builder")
-	monitorJSON := ctarchiveserve.NewMonitorJSONBuilder(cfg, zipReader, archiveIndex, logger)
+	// Initialize logs.v3.json builder
+	logger.Debug("Initializing logs.v3.json builder")
+	logListV3JSON := ctarchiveserve.NewLogListV3JSONBuilder(cfg, zipReader, archiveIndex, logger)
 
-	// Start monitor.json refresh loop (URLs set per-request)
-	logger.Debug("Starting monitor.json refresh loop", "interval", cfg.MonitorJSONRefreshInterval)
-	logger.Debug("Performing initial monitor.json refresh (this may take time with many archives)")
-	monitorJSON.Start(ctx)
-	logger.Debug("Monitor.json initial refresh completed")
+	// Start logs.v3.json refresh loop (URLs set per-request)
+	logger.Debug("Starting logs.v3.json refresh loop", "interval", cfg.LogListV3JSONRefreshInterval)
+	logger.Debug("Performing initial logs.v3.json refresh (this may take time with many archives)")
+	logListV3JSON.Start(ctx)
+	logger.Debug("Logs.v3.json initial refresh completed")
 
 	// Create HTTP server
 	logger.Debug("Creating HTTP server")
-	server := ctarchiveserve.NewServer(cfg, logger, metrics, archiveIndex, zipReader, monitorJSON)
+	server := ctarchiveserve.NewServer(cfg, logger, metrics, archiveIndex, zipReader, logListV3JSON)
 	server.SetVerbose(verboseEnabled)
 
 	// Configure http.Server with timeouts and limits per spec.md FR-012

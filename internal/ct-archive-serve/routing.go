@@ -12,7 +12,7 @@ type RouteKind int
 
 const (
 	RouteUnknown RouteKind = iota
-	RouteMonitorJSON
+	RouteLogListV3JSON
 	RouteMetrics
 	RouteCheckpoint
 	RouteLogV3JSON
@@ -59,8 +59,8 @@ func ParseRoute(path string) (Route, bool) {
 	}
 
 	switch path {
-	case "/monitor.json":
-		return Route{Kind: RouteMonitorJSON}, true
+	case "/logs.v3.json":
+		return Route{Kind: RouteLogListV3JSON}, true
 	case "/metrics":
 		return Route{Kind: RouteMetrics}, true
 	}

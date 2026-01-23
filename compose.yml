@@ -29,7 +29,7 @@ services:
       # Refresh Intervals
       # ============================================================================
       
-      # Interval for refreshing /monitor.json (default: 10m)
+      # Interval for refreshing /logs.v3.json (default: 10m)
       # Format: Go duration (e.g., 10m, 5m, 30s, 1h)
       # Optimized for large archive sets (100+ logs, 10TB+ data)
       #- CT_MONITOR_JSON_REFRESH_INTERVAL=10m

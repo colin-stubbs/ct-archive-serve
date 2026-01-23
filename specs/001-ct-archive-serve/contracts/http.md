@@ -25,12 +25,12 @@ For all endpoints:
 
 ### Monitor list
 
-- `GET /monitor.json`
+- `GET /logs.v3.json`
   - `Content-Type: application/json`
   - `submission_url` and `monitoring_url` values are formed using a “public base URL” derived from the incoming request (no configured public base URL), per `spec.md` `FR-006` / `FR-012`:
     - `X-Forwarded-Host` and `X-Forwarded-Proto` are **untrusted by default** and MUST be ignored unless the request source IP is trusted by `CT_HTTP_TRUSTED_SOURCES`.
     - When trusted, if a chosen `X-Forwarded-*` value contains a comma-separated list, the server uses the first non-empty element after trimming ASCII whitespace; the resulting scheme should be lowercased.
-  - If the most recent `/monitor.json` refresh attempt failed (e.g., due to unreadable `000.zip` or invalid `log.v3.json`), return `503` (temporarily unavailable) per `spec.md` `FR-006`.
+  - If the most recent `/logs.v3.json` refresh attempt failed (e.g., due to unreadable `000.zip` or invalid `log.v3.json`), return `503` (temporarily unavailable) per `spec.md` `FR-006`.
 
 ### Checkpoint
 

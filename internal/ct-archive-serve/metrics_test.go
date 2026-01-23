@@ -14,7 +14,7 @@ func TestMetrics_LowCardinality(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := NewMetrics(reg)
 
-	m.ObserveMonitorJSONRequest(120 * time.Millisecond)
+	m.ObserveLogListV3JSONRequest(120 * time.Millisecond)
 	m.ObserveLogRequest("example_log", 50*time.Millisecond)
 
 	mfs, err := reg.Gather()
@@ -26,9 +26,9 @@ func TestMetrics_LowCardinality(t *testing.T) {
 	assertMetricFamilyLabelNames(t, mfs, "ct_archive_serve_http_log_requests_total", []string{"log"})
 	assertMetricFamilyLabelNames(t, mfs, "ct_archive_serve_http_log_request_duration_seconds", []string{"log"})
 
-	// Ensure monitor.json metrics have no labels.
-	assertMetricFamilyLabelNames(t, mfs, "ct_archive_serve_http_monitor_json_requests_total", nil)
-	assertMetricFamilyLabelNames(t, mfs, "ct_archive_serve_http_monitor_json_request_duration_seconds", nil)
+	// Ensure logs.v3.json metrics have no labels.
+	assertMetricFamilyLabelNames(t, mfs, "ct_archive_serve_http_loglistv3_json_requests_total", nil)
+	assertMetricFamilyLabelNames(t, mfs, "ct_archive_serve_http_loglistv3_json_request_duration_seconds", nil)
 }
 
 func TestMetrics_ResourceObservability_NoLabels(t *testing.T) {

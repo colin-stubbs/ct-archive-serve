@@ -23,8 +23,8 @@ func TestParseConfig_Defaults(t *testing.T) {
 		t.Fatalf("ArchiveFolderPrefix = %q, want %q", got, want)
 	}
 
-	if got, want := cfg.MonitorJSONRefreshInterval, 10*time.Minute; got != want {
-		t.Fatalf("MonitorJSONRefreshInterval = %v, want %v", got, want)
+	if got, want := cfg.LogListV3JSONRefreshInterval, 10*time.Minute; got != want {
+		t.Fatalf("LogListV3JSONRefreshInterval = %v, want %v", got, want)
 	}
 	if got, want := cfg.ArchiveRefreshInterval, 5*time.Minute; got != want {
 		t.Fatalf("ArchiveRefreshInterval = %v, want %v", got, want)
@@ -77,8 +77,8 @@ func TestParseConfig_InvalidValues(t *testing.T) {
 			env:  map[string]string{"CT_ARCHIVE_FOLDER_PATTERN": "ct_**"},
 		},
 		{
-			name: "invalid monitor refresh duration",
-			env:  map[string]string{"CT_MONITOR_JSON_REFRESH_INTERVAL": "nope"},
+			name: "invalid loglist v3 json refresh duration",
+			env:  map[string]string{"CT_LOGLISTV3_JSON_REFRESH_INTERVAL": "nope"},
 		},
 		{
 			name: "invalid archive refresh duration",

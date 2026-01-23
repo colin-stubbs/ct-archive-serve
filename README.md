@@ -5,7 +5,7 @@
 ## What it does
 
 - Serves **Static-CT assets** for each archived log under `/<log>/...` (checkpoint, tiles, issuers, etc.)
-- Generates and serves a **discovery log list** at `GET /monitor.json` (compatible with common log list v3 consumers)
+- Generates and serves a **discovery log list** at `GET /logs.v3.json` (compatible with common log list v3 consumers)
 - Exposes Prometheus metrics at `GET /metrics` (low-cardinality by design)
 
 ## Repository workflow (spec-driven)
@@ -56,7 +56,7 @@ You can operate `ct-archive-serve` entirely via containers. The server expects a
 
 If a zip part exists but fails basic zip integrity checks (common while a torrent download is still in progress), `ct-archive-serve` returns HTTP `503` for requests that require that zip part. Failed zip parts are re-tried after `CT_ZIP_INTEGRITY_FAIL_TTL` (default `5m`).
 
-If `/monitor.json` refresh fails (e.g., due to unreadable `000.zip` or invalid `log.v3.json`), `ct-archive-serve` returns HTTP `503` for `GET /monitor.json` until the next successful refresh.
+If `/logs.v3.json` refresh fails (e.g., due to unreadable `000.zip` or invalid `log.v3.json`), `ct-archive-serve` returns HTTP `503` for `GET /logs.v3.json` until the next successful refresh.
 
 ### docker run
 
@@ -95,7 +95,7 @@ podman compose up --build
 
 Then access:
 
-- `GET http://localhost:8080/monitor.json`
+- `GET http://localhost:8080/logs.v3.json`
 - `GET http://localhost:8080/metrics`
 
 Local tooling:

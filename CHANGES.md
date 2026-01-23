@@ -1,11 +1,32 @@
+* 2026-01-21 - Rename MONITOR_JSON references to LOGLISTV3_JSON throughout codebase
+
+- Renamed environment variable `CT_MONITOR_JSON_REFRESH_INTERVAL` to `CT_LOGLISTV3_JSON_REFRESH_INTERVAL`
+- Renamed config field `MonitorJSONRefreshInterval` to `LogListV3JSONRefreshInterval`
+- Renamed types: `MonitorJSONBuilder` → `LogListV3JSONBuilder`, `MonitorJSONSnapshot` → `LogListV3JSONSnapshot`, `MonitorJSONOperator` → `LogListV3JSONOperator`, `MonitorJSONTiledLog` → `LogListV3JSONTiledLog`
+- Renamed function `NewMonitorJSONBuilder` → `NewLogListV3JSONBuilder`
+- Renamed metrics: `monitorJSONRequestsTotal` → `logListV3JSONRequestsTotal`, `monitorJSONRequestDuration` → `logListV3JSONRequestDuration`
+- Renamed metric method `ObserveMonitorJSONRequest` → `ObserveLogListV3JSONRequest`
+- Updated all variable names from `monitorJSON` to `logListV3JSON`
+- Updated all test function names and references
+- Updated documentation (spec.md, plan.md, tasks.md, README.md, quickstart.md, compose.yml)
+- Updated terminology: "monitor JSON" → "loglist v3 JSON" throughout
+
+* 2026-01-21 - Add loglist3 validation requirement and tests for logs.v3.json
+
+- Updated `spec.md` `FR-006` to require validation of generated `/logs.v3.json` output using the `loglist3` library from `github.com/google/certificate-transparency-go/loglist3`
+- Added `TestLogListV3JSONBuilder_LogListV3Validation` test that validates generated logs.v3.json can be parsed by loglist3 library
+- Updated `TestCompatibility_SmokeTest` to use loglist3 validation for logs.v3.json endpoint
+- Updated test data to use valid base64-encoded values for `log_id` and `key` fields (required by loglist3 schema)
+- Added dependency on `github.com/google/certificate-transparency-go` v1.3.2
+
 * 2026-01-21 - Align ZIP integrity verification scope; document trusted forwarded headers
 
 - Updated `spec.md` `FR-013` to require ZIP structural validity checks including central directory/EOCD and local file header verification (without reading entry bodies)
-- Updated `specs/001-ct-archive-serve/contracts/http.md` to document `CT_HTTP_TRUSTED_SOURCES` gating for `X-Forwarded-*` in `/monitor.json` URL formation
+- Updated `specs/001-ct-archive-serve/contracts/http.md` to document `CT_HTTP_TRUSTED_SOURCES` gating for `X-Forwarded-*` in `/logs.v3.json` URL formation
 
 * 2026-01-21 - Clarify forwarded-header trust gating; specify issuer fingerprint validation
 
-- Updated `specs/001-ct-archive-serve/plan.md` to explicitly describe `CT_HTTP_TRUSTED_SOURCES` gating for `X-Forwarded-*` during `/monitor.json` URL formation
+- Updated `specs/001-ct-archive-serve/plan.md` to explicitly describe `CT_HTTP_TRUSTED_SOURCES` gating for `X-Forwarded-*` during `/logs.v3.json` URL formation
 - Updated `specs/001-ct-archive-serve/spec.md` Edge Cases to specify issuer `<fingerprint>` validation (non-empty lowercase hex; otherwise `404`)
 
 * 2026-01-22 - Complete Phase 4-5 implementation: tile/issuer handlers, request logging, compatibility tests, ZipPartCache performance optimization
@@ -26,10 +47,10 @@
 - Implemented HTTP method policy enforcement (T017-T018): GET/HEAD support, 405 for unsupported methods, 404 for unknown routes
 - Implemented CLI flags and process wiring (T019): -h/--help, -v/--verbose, -d/--debug, HTTP server timeouts/limits configuration
 - Implemented publicBaseURL derivation (T020-T021): trusted-source gating, X-Forwarded-* header handling, comma-separated list parsing
-- Implemented monitor.json builder (T022-T025): extract log.v3.json, check has_issuers, deterministic sort, periodic refresh loop, 503 on refresh failure
+- Implemented logs.v3.json builder (T022-T025): extract log.v3.json, check has_issuers, deterministic sort, periodic refresh loop, 503 on refresh failure
 - Implemented zip selection math (T026-T027): hash tiles (L=0/1/2), data tiles, shared metadata (L>=3) selection
 - Implemented checkpoint and log.v3.json handlers (T028-T029): serve from 000.zip with correct Content-Type, 404/503 handling, HEAD support
-- Added GetAllLogs() method to ArchiveIndex for monitor.json building
+- Added GetAllLogs() method to ArchiveIndex for logs.v3.json building
 - Added SelectZipPart() method to ArchiveIndex for tile zip selection
 
 * 2026-01-21 - Clean up plan.md: reduce duplication and clarify implementation notes

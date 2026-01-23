@@ -25,7 +25,7 @@ type Server struct {
 	// Components (may be nil during initial setup)
 	archiveIndex *ArchiveIndex
 	zipReader    *ZipReader
-	monitorJSON  *MonitorJSONBuilder
+	logListV3JSON  *LogListV3JSONBuilder
 }
 
 // NewServer constructs a new Server instance.
@@ -35,7 +35,7 @@ func NewServer(
 	metrics *Metrics,
 	archiveIndex *ArchiveIndex,
 	zipReader *ZipReader,
-	monitorJSON *MonitorJSONBuilder,
+	logListV3JSON *LogListV3JSONBuilder,
 ) *Server {
 	return &Server{
 		cfg:          cfg,
@@ -44,7 +44,7 @@ func NewServer(
 		verbose:     false, // Will be set from CLI flags in main.go
 		archiveIndex: archiveIndex,
 		zipReader:   zipReader,
-		monitorJSON: monitorJSON,
+		logListV3JSON: logListV3JSON,
 	}
 }
 
@@ -81,8 +81,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch route.Kind {
 	case RouteMetrics:
 		s.handleMetrics(rw, r)
-	case RouteMonitorJSON:
-		s.handleMonitorJSON(rw, r)
+	case RouteLogListV3JSON:
+		s.handleLogListV3JSON(rw, r)
 	case RouteCheckpoint:
 		s.handleCheckpoint(rw, r, route)
 	case RouteLogV3JSON:
@@ -130,10 +130,10 @@ func (w *headResponseWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-// handleMonitorJSON serves GET /monitor.json per spec.md FR-006.
-func (s *Server) handleMonitorJSON(w http.ResponseWriter, r *http.Request) {
-	if s.monitorJSON == nil {
-		http.Error(w, "Monitor.json not initialized", http.StatusInternalServerError)
+// handleLogListV3JSON serves GET /logs.v3.json per spec.md FR-006.
+func (s *Server) handleLogListV3JSON(w http.ResponseWriter, r *http.Request) {
+	if s.logListV3JSON == nil {
+		http.Error(w, "Logs.v3.json not initialized", http.StatusInternalServerError)
 		return
 	}
 
@@ -141,7 +141,7 @@ func (s *Server) handleMonitorJSON(w http.ResponseWriter, r *http.Request) {
 	publicBaseURL := s.derivePublicBaseURL(r)
 
 	// Get snapshot with URLs set from this request's publicBaseURL
-	snap := s.monitorJSON.GetSnapshotForRequest(publicBaseURL)
+	snap := s.logListV3JSON.GetSnapshotForRequest(publicBaseURL)
 	if snap == nil || snap.LastError != nil {
 		// Refresh failure behavior per FR-006: return 503
 		w.Header().Set("Content-Type", "application/json")
@@ -154,7 +154,7 @@ func (s *Server) handleMonitorJSON(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(snap); err != nil {
 		if s.logger != nil {
-			s.logger.Error("Failed to encode monitor.json", "error", err)
+			s.logger.Error("Failed to encode logs.v3.json", "error", err)
 		}
 	}
 }

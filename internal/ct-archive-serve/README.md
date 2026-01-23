@@ -8,8 +8,8 @@ See the top-level `README.md` for a complete list of environment variables. Key 
 
 - `CT_ARCHIVE_PATH`: Path to the archive directory containing log folders
 - `CT_ARCHIVE_FOLDER_PATTERN`: Pattern for matching log folders (e.g., `ct_*`)
-- `CT_MONITOR_JSON_REFRESH_INTERVAL`: Interval for refreshing `/monitor.json` (default: 5m)
-- `CT_ARCHIVE_REFRESH_INTERVAL`: Interval for refreshing archive index (default: 1m)
+- `CT_LOGLISTV3_JSON_REFRESH_INTERVAL`: Interval for refreshing `/logs.v3.json` (default: 10m)
+- `CT_ARCHIVE_REFRESH_INTERVAL`: Interval for refreshing archive index (default: 5m)
 - `CT_ZIP_CACHE_MAX_OPEN`: Maximum number of open zip parts to cache (default: 256)
 - `CT_ZIP_INTEGRITY_FAIL_TTL`: TTL for failed zip integrity checks (default: 5m)
 - `CT_HTTP_*`: HTTP server timeout and limit configuration
@@ -18,7 +18,7 @@ See the top-level `README.md` for a complete list of environment variables. Key 
 
 The server supports the following routes:
 
-- `GET /monitor.json`: CT log list v3 compatible JSON
+- `GET /logs.v3.json`: CT log list v3 compatible JSON
 - `GET /metrics`: Prometheus metrics
 - `GET /<log>/checkpoint`: Log checkpoint (text/plain)
 - `GET /<log>/log.v3.json`: Log metadata (application/json)
@@ -42,7 +42,7 @@ When a zip part exists but fails structural integrity checks (e.g., still downlo
 
 Metrics are low-cardinality to avoid metric explosion:
 
-- `/monitor.json` requests: Aggregate counters and histograms (no labels)
+- `/logs.v3.json` requests: Aggregate counters and histograms (no labels)
 - `/<log>/...` requests: Per-log aggregates (labeled by `log` only)
 - Resource observability: Gauges for discovered logs/zip parts, cache size, integrity pass/fail counts (no per-request labels)
 
