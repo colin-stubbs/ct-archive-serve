@@ -23,10 +23,10 @@ func TestParseConfig_Defaults(t *testing.T) {
 		t.Fatalf("ArchiveFolderPrefix = %q, want %q", got, want)
 	}
 
-	if got, want := cfg.MonitorJSONRefreshInterval, 5*time.Minute; got != want {
+	if got, want := cfg.MonitorJSONRefreshInterval, 10*time.Minute; got != want {
 		t.Fatalf("MonitorJSONRefreshInterval = %v, want %v", got, want)
 	}
-	if got, want := cfg.ArchiveRefreshInterval, 1*time.Minute; got != want {
+	if got, want := cfg.ArchiveRefreshInterval, 5*time.Minute; got != want {
 		t.Fatalf("ArchiveRefreshInterval = %v, want %v", got, want)
 	}
 	if got, want := cfg.ZipCacheMaxOpen, 256; got != want {

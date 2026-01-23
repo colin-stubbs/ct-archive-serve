@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -56,6 +57,13 @@ type MonitorJSONTiledLog struct {
 	LogName        string                 `json:"-"` // Internal: log name for URL construction
 }
 
+// zipFileCacheEntry stores cached data for a zip file along with its modification time.
+type zipFileCacheEntry struct {
+	mtime      time.Time
+	logV3Entry *LogV3Entry
+	hasIssuers bool
+}
+
 // MonitorJSONBuilder builds monitor.json snapshots from discovered archives.
 type MonitorJSONBuilder struct {
 	zipReader    *ZipReader
@@ -68,6 +76,10 @@ type MonitorJSONBuilder struct {
 	// refreshMu serializes refresh operations to prevent concurrent refreshes
 	// (e.g., if a refresh takes longer than the refresh interval)
 	refreshMu sync.Mutex
+
+	// zipCache stores cached log.v3.json data keyed by zip file path.
+	// Protected by refreshMu (only accessed during refresh operations).
+	zipCache map[string]zipFileCacheEntry
 }
 
 // NewMonitorJSONBuilder constructs a new MonitorJSONBuilder.
@@ -82,6 +94,7 @@ func NewMonitorJSONBuilder(
 		archiveIndex: archiveIndex,
 		logger:       logger,
 		cfg:          cfg,
+		zipCache:     make(map[string]zipFileCacheEntry),
 	}
 }
 
@@ -105,7 +118,33 @@ func (b *MonitorJSONBuilder) GetSnapshot() *MonitorJSONSnapshot {
 // extractLogV3JSONAndCheckIssuers opens a zip part once and performs both operations:
 // extracts/parses log.v3.json and checks for issuer/ entries. This avoids opening
 // the same ZIP file twice, which is expensive for large ZIPs with many entries.
+// It uses mtime-based caching to avoid re-reading unchanged zip files.
 func (b *MonitorJSONBuilder) extractLogV3JSONAndCheckIssuers(zipPath string) (*LogV3Entry, bool, error) {
+	// Check mtime to see if we can use cached data
+	stat, err := os.Stat(zipPath)
+	if err != nil {
+		return nil, false, fmt.Errorf("stat zip: %w", err)
+	}
+
+	// Check cache (protected by refreshMu, which is held by caller)
+	if cached, ok := b.zipCache[zipPath]; ok {
+		if cached.mtime.Equal(stat.ModTime()) {
+			// mtime matches, use cached data
+			if b.logger != nil {
+				b.logger.Debug("Using cached log.v3.json data (mtime unchanged)", "zip_path", zipPath)
+			}
+			// Return a copy of the cached entry to avoid sharing mutable state
+			entryCopy := *cached.logV3Entry
+			return &entryCopy, cached.hasIssuers, nil
+		}
+		// mtime changed, remove from cache and re-read
+		if b.logger != nil {
+			b.logger.Debug("Zip file mtime changed, re-reading", "zip_path", zipPath, "old_mtime", cached.mtime, "new_mtime", stat.ModTime())
+		}
+		delete(b.zipCache, zipPath)
+	}
+
+	// Read from zip file
 	if b.logger != nil {
 		b.logger.Debug("Opening zip file for log.v3.json extraction and issuer check", "zip_path", zipPath)
 	}
@@ -157,6 +196,13 @@ func (b *MonitorJSONBuilder) extractLogV3JSONAndCheckIssuers(zipPath string) (*L
 	var entry LogV3Entry
 	if err := json.Unmarshal(data, &entry); err != nil {
 		return nil, hasIssuers, fmt.Errorf("parse log.v3.json: %w", err)
+	}
+
+	// Cache the result
+	b.zipCache[zipPath] = zipFileCacheEntry{
+		mtime:      stat.ModTime(),
+		logV3Entry: &entry,
+		hasIssuers: hasIssuers,
 	}
 
 	if b.logger != nil {
@@ -244,6 +290,23 @@ func (b *MonitorJSONBuilder) BuildSnapshot(publicBaseURL string) (*MonitorJSONSn
 		tiledLogs = append(tiledLogs, tiledLog)
 		if b.logger != nil {
 			b.logger.Debug("Added log to monitor.json snapshot", "log", logName, "has_issuers", hasIssuers)
+		}
+	}
+
+	// Clean up cache entries for logs that are no longer in the archive index
+	// Build a set of current zip paths
+	currentZipPaths := make(map[string]bool, len(snap.Logs))
+	for _, log := range snap.Logs {
+		currentZipPaths[log.FolderPath+"/000.zip"] = true
+	}
+
+	// Remove cache entries for zip files that no longer exist in the archive
+	for zipPath := range b.zipCache {
+		if !currentZipPaths[zipPath] {
+			if b.logger != nil {
+				b.logger.Debug("Removing cache entry for removed log", "zip_path", zipPath)
+			}
+			delete(b.zipCache, zipPath)
 		}
 	}
 

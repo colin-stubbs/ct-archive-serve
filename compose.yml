@@ -29,13 +29,15 @@ services:
       # Refresh Intervals
       # ============================================================================
       
-      # Interval for refreshing /monitor.json (default: 5m)
-      # Format: Go duration (e.g., 5m, 30s, 1h)
-      #- CT_MONITOR_JSON_REFRESH_INTERVAL=5m
+      # Interval for refreshing /monitor.json (default: 10m)
+      # Format: Go duration (e.g., 10m, 5m, 30s, 1h)
+      # Optimized for large archive sets (100+ logs, 10TB+ data)
+      #- CT_MONITOR_JSON_REFRESH_INTERVAL=10m
       
-      # Interval for refreshing archive index (default: 1m)
-      # Format: Go duration (e.g., 1m, 30s, 5m)
-      #- CT_ARCHIVE_REFRESH_INTERVAL=1m
+      # Interval for refreshing archive index (default: 5m)
+      # Format: Go duration (e.g., 5m, 1m, 30s)
+      # Optimized for large archive sets to reduce disk I/O
+      #- CT_ARCHIVE_REFRESH_INTERVAL=5m
 
       # ============================================================================
       # Zip Cache Configuration
@@ -43,6 +45,7 @@ services:
       
       # Maximum number of open zip parts to cache (default: 256)
       # Higher values improve performance for hot zip parts but increase memory usage
+      # Operators with very large working sets may increase this value
       #- CT_ZIP_CACHE_MAX_OPEN=256
       
       # TTL for failed zip integrity checks (default: 5m)

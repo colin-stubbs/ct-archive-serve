@@ -147,6 +147,12 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
     - This protection applies to both `MonitorJSONBuilder` refresh operations and `ArchiveIndex` refresh operations to prevent resource waste (e.g., concurrent ZIP file opens, concurrent disk scans).
   - **ZIP optimization for monitor.json building**:
     - When building a monitor.json snapshot, `ct-archive-serve` MUST open each `000.zip` file only once per log to extract both `log.v3.json` and check for `issuer/` entries, rather than opening the same ZIP file twice. This optimization reduces startup time and resource usage when processing many logs with large ZIP files.
+  - **Mtime-based caching for monitor.json building**:
+    - `ct-archive-serve` MUST track the modification time (mtime) of each `000.zip` file and cache the extracted `log.v3.json` data and `has_issuers` flag.
+    - Before opening a `000.zip` file during refresh, `ct-archive-serve` MUST check the file's current mtime. If the mtime matches the cached mtime, `ct-archive-serve` MUST use the cached data without opening the ZIP file, avoiding unnecessary ZIP reads for unchanged files.
+    - If the mtime has changed, `ct-archive-serve` MUST re-read the ZIP file and update the cache with the new mtime and data.
+    - After building each snapshot, `ct-archive-serve` MUST remove cache entries for zip files that are no longer present in the archive index (e.g., when archive folders are removed), preventing memory leaks.
+    - This optimization significantly reduces disk I/O and CPU usage during periodic refreshes when most archive files remain unchanged, which is typical for large, stable archive sets (e.g., 100+ logs, 10TB+ data).
 
   Example minimal shape (illustrative only; values are placeholders — fields within each `tiled_logs[]` entry are sourced from `log.v3.json` and then adjusted per requirements):
 
@@ -179,7 +185,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
 - **FR-006b**: For each generated `tiled_logs[]` entry, `ct-archive-serve` MUST ensure the entry is valid for common log list v3 consumers: it MUST provide either `url` (RFC6962) OR (`submission_url` + `monitoring_url`) (static-ct-api), but MUST NOT provide both. For archives, the server MUST publish static-ct-api URLs and therefore MUST NOT include `url` in the generated `tiled_logs[]` entries.
 - **FR-006a**: For each generated `tiled_logs[]` entry, `ct-archive-serve` MUST set `has_issuers=true` if and only if the corresponding archive folder’s `000.zip` contains one or more entries under `issuer/` (determined from zip metadata; no full-zip decompression).
 - **FR-007**: `ct-archive-serve` MUST provide environment variables to control `monitor.json` generation, including:
-  - `CT_MONITOR_JSON_REFRESH_INTERVAL` (default: `5m`)
+  - `CT_MONITOR_JSON_REFRESH_INTERVAL` (default: `10m`) — optimized for large archive sets (100+ logs, 10TB+ data); operators with smaller sets may reduce this interval
 - **FR-008**: `ct-archive-serve` MUST map requested tile paths to the correct subtree zip part according to the `photocamera-archiver` subtree layout:
   - For hash tiles, a tile at level \(L\) and index \(N\) has \(leafStart = N \cdot 256^{L+1}\).
   - `photocamera-archiver` splits the log by level-2 tiles, each spanning \(256^3\) leaves, so for requests where \(L \le 2\) (and for data tiles), the subtree zip index MUST be derived as:
@@ -211,8 +217,8 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
 - **FR-009a**: For requests that require reading a specific zip part, if that zip part exists but fails basic zip integrity checks, `ct-archive-serve` MUST return `503` (temporarily unavailable) rather than `404` (see `FR-013`).
 - **FR-010**: `ct-archive-serve` SHOULD be compatible with Static-CT (C2SP/tiled) client implementations when configured with the server as their monitoring prefix.
 - **FR-011**: `ct-archive-serve` MUST provide environment variables to tune high-load performance (bounded resource usage), including:
-  - `CT_ZIP_CACHE_MAX_OPEN` (default: `256`) — maximum number of simultaneously-open zip parts across all logs
-  - `CT_ARCHIVE_REFRESH_INTERVAL` (default: `1m`) — how frequently to refresh the on-disk archive folder/zip-part index (must not run on the request hot path)
+  - `CT_ZIP_CACHE_MAX_OPEN` (default: `256`) — maximum number of simultaneously-open zip parts across all logs. Operators with very large working sets (requests spread across many zip files) may increase this value to improve cache hit rates, at the cost of higher memory usage and file descriptor consumption.
+  - `CT_ARCHIVE_REFRESH_INTERVAL` (default: `5m`) — how frequently to refresh the on-disk archive folder/zip-part index (must not run on the request hot path). Optimized for large archive sets (100+ logs, 10TB+ data) to reduce unnecessary disk I/O; operators with frequently-changing archive sets may reduce this interval
 - **FR-013**: Zip integrity verification and temporary unavailability handling:
   - `ct-archive-serve` MUST treat archive zip parts as potentially incomplete (e.g., during torrent downloads) and MUST perform **basic zip integrity checks** before using a zip part to serve content.
   - Basic zip integrity checks MUST be limited to establishing that the zip file is structurally valid for serving via Go's `archive/zip`:

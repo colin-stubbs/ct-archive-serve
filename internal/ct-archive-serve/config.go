@@ -69,8 +69,8 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 	cfg := Config{
 		ArchivePath:          "/var/log/ct/archive",
 		ArchiveFolderPattern: "ct_*",
-		MonitorJSONRefreshInterval: 5 * time.Minute,
-		ArchiveRefreshInterval:     1 * time.Minute,
+		MonitorJSONRefreshInterval: 10 * time.Minute,
+		ArchiveRefreshInterval:     5 * time.Minute,
 		ZipCacheMaxOpen:            256,
 		ZipIntegrityFailTTL:        5 * time.Minute,
 		HTTPReadHeaderTimeout:      5 * time.Second,
