@@ -23,7 +23,7 @@ For all endpoints:
   - Prometheus exposition format
   - `Content-Type: text/plain; version=0.0.4; charset=utf-8`
 
-### Monitor list
+### Log list v3
 
 - `GET /logs.v3.json`
   - `Content-Type: application/json`

@@ -17,7 +17,7 @@
 ## Parallel opportunities (examples)
 
 - **After Phase 2 completes**:
-  - [P] US1 monitor-json builder (`internal/ct-archive-serve/monitor_json.go`) can proceed in parallel with
+  - [P] US1 loglist v3 json builder (`internal/ct-archive-serve/monitor_json.go`) can proceed in parallel with
   - [P] US2 asset handlers (`internal/ct-archive-serve/server.go`, `internal/ct-archive-serve/routing.go`)
 
 ---
@@ -91,12 +91,12 @@
 
 - [x] T020 [P] [US1] Add `publicBaseURL` derivation tests in `internal/ct-archive-serve/server_test.go` (trusted-source gating via `CT_HTTP_TRUSTED_SOURCES`, comma-separated `X-Forwarded-*`, whitespace trimming, `Host` fallback, scheme lowercasing) per `spec.md` (`FR-006`, `FR-012`)
 - [x] T021 [US1] Implement `publicBaseURL` derivation helper in `internal/ct-archive-serve/server.go` per `spec.md` (`FR-006`, `FR-012`)
-- [x] T022 [P] [US1] Add monitor snapshot builder tests in `internal/ct-archive-serve/monitor_json_test.go` (extract+parse `log.v3.json` from `000.zip`, set `has_issuers` from presence of `issuer/`, remove `url`, set `submission_url`/`monitoring_url`, deterministic sort by `<log>`)
-- [x] T023 [US1] Implement monitor snapshot builder in `internal/ct-archive-serve/monitor_json.go` per `spec.md` (`FR-006`, `FR-006a`, `FR-006b`)
+- [x] T022 [P] [US1] Add loglist v3 json snapshot builder tests in `internal/ct-archive-serve/monitor_json_test.go` (extract+parse `log.v3.json` from `000.zip`, set `has_issuers` from presence of `issuer/`, remove `url`, set `submission_url`/`monitoring_url`, deterministic sort by `<log>`, validate generated JSON using `loglist3` library from `github.com/google/certificate-transparency-go/loglist3` per `spec.md` `FR-006` validation requirement)
+- [x] T023 [US1] Implement loglist v3 json snapshot builder in `internal/ct-archive-serve/monitor_json.go` per `spec.md` (`FR-006`, `FR-006a`, `FR-006b`)
   - **Implementation note**: Optimized to open each `000.zip` file only once per log to extract both `log.v3.json` and check for `issuer/` entries (via `extractLogV3JSONAndCheckIssuers`), rather than opening the same ZIP file twice. This significantly reduces startup time for large archives (per `spec.md` `FR-006` ZIP optimization).
   - **Implementation note (mtime caching)**: Added mtime-based caching to avoid re-reading unchanged zip files. Before opening a `000.zip` file, the implementation checks the file's modification time. If the mtime matches the cached mtime, cached data is used without opening the ZIP file. Cache entries are automatically cleaned up when logs are removed from the archive index. This optimization significantly reduces disk I/O and CPU usage during periodic refreshes for large, stable archive sets (per `spec.md` `FR-006` mtime-based caching).
 - [x] T024 [US1] Implement periodic refresh loop + atomic snapshot in `internal/ct-archive-serve/monitor_json.go` using `CT_LOGLISTV3_JSON_REFRESH_INTERVAL` and context-driven shutdown per `spec.md` (`FR-007`)
-  - **Implementation note**: Added mutex protection (`refreshMu`) to serialize refresh operations and prevent concurrent refreshes when a refresh takes longer than `CT_MONITOR_JSON_REFRESH_INTERVAL`, preventing resource waste from concurrent ZIP file opens (per `spec.md` `FR-006` refresh concurrency protection).
+  - **Implementation note**: Added mutex protection (`refreshMu`) to serialize refresh operations and prevent concurrent refreshes when a refresh takes longer than `CT_LOGLISTV3_JSON_REFRESH_INTERVAL`, preventing resource waste from concurrent ZIP file opens (per `spec.md` `FR-006` refresh concurrency protection).
 - [x] T025 [US1] Wire `GET /logs.v3.json` handler in `internal/ct-archive-serve/server.go` (render `version="3.0"`, one operator `{name:"ct-archive-serve", email:[], logs:[], tiled_logs:[...]}`, set `log_list_timestamp`, set `Content-Type: application/json`) per `spec.md` (`FR-006`)
 - [x] T052 [P] [US1] Add `/logs.v3.json` refresh failure behavior tests in `internal/ct-archive-serve/monitor_json_test.go` (if the most recent refresh attempt fails, `GET /logs.v3.json` MUST return `503` until the next successful refresh per `spec.md` `FR-006`)
 - [x] T053 [US1] Implement `/logs.v3.json` refresh failure behavior in `internal/ct-archive-serve/monitor_json.go` per `spec.md` `FR-006` (track last refresh error state; serve `503` when unhealthy; resume `200` after next successful refresh; log errors)

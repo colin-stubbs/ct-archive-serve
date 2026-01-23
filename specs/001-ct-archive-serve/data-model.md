@@ -17,7 +17,7 @@
   - HTTP request mapped to a `LogArchive` (first URL path segment) and a `ZipEntryPath` (remaining segments).
   - Special case: `GET /logs.v3.json` is global (no `<log>` prefix).
 
-- **MonitorList**
+- **LogListV3**
   - Represents the generated `GET /logs.v3.json` payload.
   - Key attributes: `GeneratedAt` (time), `Payload` (JSON bytes), `Entries` (one per discovered `LogArchive` derived from `000.zip` → `log.v3.json`).
 

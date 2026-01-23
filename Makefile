@@ -25,7 +25,7 @@ clean:
 	rm -fv ./bin/ct-archive-serve
 	@echo "✅ Build artifacts cleaned up"
 	@echo "🧹 Cleaning up qBittorrent config and feed content..."
-	find config/ -type f ! -name .gitkeep ! -name qBittorrent.conf ! -name feeds.json -exec rm -fv {} \;
+	find qbittorrent/ -type f ! -name .gitkeep ! -name qBittorrent.conf ! -name feeds.json ! -name download_rules.json -exec rm -fv {} \;
 	@echo "✅ qBittorrent config and feed content cleaned up"
 	@echo "✅ Cleanup completed"
 

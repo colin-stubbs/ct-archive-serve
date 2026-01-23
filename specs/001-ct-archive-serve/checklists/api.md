@@ -16,8 +16,8 @@
   - Notes: Route list is explicit in `FR-002` and reinforced by `contracts/http.md`.
 - [x] CHK002 Are **HTTP methods** explicitly constrained (e.g., support GET+HEAD; 405 for others) for every endpoint? [Completeness, Spec §FR-002a]
 - [x] CHK003 Are **response status codes** defined for all endpoints for (a) success, (b) missing content, and (c) invalid inputs? [Completeness, Spec §FR-009; Spec §Edge Cases]
-  - Notes: `404` for missing/invalid paths (`FR-009`, Edge Cases), `405` for wrong methods (`FR-002a`), `503` for bad zip integrity and monitor refresh failures (`FR-013`, `FR-006`).
-- [x] CHK004 Are **Content-Type rules** specified for every served asset class (monitor list, checkpoint, tiles, issuer, JSON files)? [Completeness, Spec §FR-002]
+  - Notes: `404` for missing/invalid paths (`FR-009`, Edge Cases), `405` for wrong methods (`FR-002a`), `503` for bad zip integrity and log list v3 refresh failures (`FR-013`, `FR-006`).
+- [x] CHK004 Are **Content-Type rules** specified for every served asset class (log list v3, checkpoint, tiles, issuer, JSON files)? [Completeness, Spec §FR-002]
 - [x] CHK004a Are **HTTP server timeout/limit** knobs fully enumerated and justified for safety under slow/abusive clients (ReadHeaderTimeout, IdleTimeout, MaxHeaderBytes, etc.)? [Safety, Spec §FR-012]
 - [x] CHK005 Are the **zip-part naming conventions** and required files (`000.zip`, `001.zip`, …; `checkpoint`, `log.v3.json`, `tile/...`, `issuer/...`) explicitly stated as requirements (not implied)? [Gap]
   - Notes: Zip part naming (`NNN.zip`) is now explicit under `FR-003`; request→zip-entry mapping is explicit under `FR-009`; `/logs.v3.json` uses `000.zip` + `log.v3.json` per `FR-006`.
@@ -51,7 +51,7 @@
 
 ## Scenario Coverage (Primary / Alternate / Error / Recovery)
 
-- [x] CHK019 Are primary flows specified for each endpoint class: monitor list, checkpoint, log info, hash tiles, data tiles, issuer? [Coverage, Spec §FR-002; Spec §User Stories]
+- [x] CHK019 Are primary flows specified for each endpoint class: log list v3, checkpoint, log info, hash tiles, data tiles, issuer? [Coverage, Spec §FR-002; Spec §User Stories]
 - [x] CHK020 Are alternate flows specified for **multiple logs** (ambiguity when `<log>` not found; behavior when multiple folders could map to same `<log>`)? [Gap, Spec §FR-003; Spec §FR-003a]
   - Notes: `<log>` not found → `404` (`FR-009`); collisions are a startup error (`FR-003b`).
 - [x] CHK021 Are error flows specified for “zip part exists but entry missing” vs “zip part missing” vs “zip part present but fails integrity checks (503 temporarily unavailable; cached with TTL)” vs “entry unreadable/corrupt zip”? [Coverage, Spec §FR-013]

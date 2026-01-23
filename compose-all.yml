@@ -147,7 +147,7 @@ services:
       - UMASK=${UMASK:-022}
     volumes:
       # persistent custom qBittorrent configuration,
-      - ./config:/config
+      - ./qbittorrent:/config
       # shared storage with ct-archive-serve
       - ./archive:/downloads
     ports:
