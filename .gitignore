@@ -36,6 +36,13 @@ bin/
 
 # golangci-lint output
 lint.json
+lint.html
+
+# govulncheck output
+govulncheck.json
+
+# trivy output
+trivy-results.json
 
 # ignore additional qBittorrent content that is not required for a fresh start
 qbittorrent/

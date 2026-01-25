@@ -17,6 +17,8 @@ output:
       path: stdout
     json:
       path: lint.json
+    html:
+      path: lint.html
 
 linters:
   enable:

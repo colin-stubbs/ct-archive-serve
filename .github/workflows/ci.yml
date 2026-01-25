@@ -1,6 +1,7 @@
 name: ci
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches:
@@ -32,10 +33,27 @@ jobs:
           go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
           golangci-lint run
 
+      - name: Upload lint results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-results
+          path: lint.json
+          retention-days: 30
+
       - name: Vulnerability check (govulncheck)
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck -json ./... > govulncheck.json || true
           govulncheck ./...
+
+      - name: Upload govulncheck results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: govulncheck-results
+          path: govulncheck.json
+          retention-days: 30
 
       - name: Vulnerability scan (trivy)
         uses: aquasecurity/trivy-action@0.33.1
@@ -47,4 +65,13 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
+          format: json
+          output: trivy-results.json
 
+      - name: Upload trivy results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-results
+          path: trivy-results.json
+          retention-days: 30
