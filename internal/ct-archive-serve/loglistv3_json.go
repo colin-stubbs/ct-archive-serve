@@ -243,7 +243,7 @@ func (b *LogListV3JSONBuilder) BuildSnapshot(publicBaseURL string) (*LogListV3JS
 		b.logger.Debug("Building logs.v3.json snapshot", "log_count", len(snap.Logs))
 	}
 
-	var tiledLogs []LogListV3JSONTiledLog
+	tiledLogs := make([]LogListV3JSONTiledLog, 0)
 	logNames := make([]string, 0, len(snap.Logs))
 	for logName := range snap.Logs {
 		logNames = append(logNames, logName)
@@ -274,13 +274,27 @@ func (b *LogListV3JSONBuilder) BuildSnapshot(publicBaseURL string) (*LogListV3JS
 		}
 
 		// Build tiled log entry (remove url, add submission_url/monitoring_url per FR-006b)
+		// Set state to "retired" with discovery timestamp if available
+		var state map[string]interface{}
+		if !log.FirstDiscovered.IsZero() {
+			// Set state to retired with discovery timestamp
+			state = map[string]interface{}{
+				"retired": map[string]interface{}{
+					"timestamp": log.FirstDiscovered.UTC().Format(time.RFC3339),
+				},
+			}
+		} else {
+			// If no discovery timestamp yet (e.g., 000.zip not found), use state from log.v3.json
+			state = logV3.State
+		}
+
 		tiledLog := LogListV3JSONTiledLog{
 			Description:   logV3.Description,
 			LogID:         logV3.LogID,
 			Key:           logV3.Key,
 			MMD:           logV3.MMD,
 			LogType:       logV3.LogType,
-			State:         logV3.State,
+			State:         state,
 			SubmissionURL: publicBaseURL + "/" + logName,
 			MonitoringURL: publicBaseURL + "/" + logName,
 			HasIssuers:    hasIssuers,

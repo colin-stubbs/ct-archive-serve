@@ -173,7 +173,11 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
             "key": "<base64 public key>",
             "mmd": 86400,
             "log_type": "prod",
-            "state": {},
+            "state": {
+              "retired": {
+                "timestamp": "2026-01-21T00:00:00Z"
+              }
+            },
             "submission_url": "https://ct.example/example_log_2024",
             "monitoring_url": "https://ct.example/example_log_2024",
             "has_issuers": true
@@ -185,6 +189,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
   ```
 - **FR-006b**: For each generated `tiled_logs[]` entry, `ct-archive-serve` MUST ensure the entry is valid for common log list v3 consumers: it MUST provide either `url` (RFC6962) OR (`submission_url` + `monitoring_url`) (static-ct-api), but MUST NOT provide both. For archives, the server MUST publish static-ct-api URLs and therefore MUST NOT include `url` in the generated `tiled_logs[]` entries.
 - **FR-006a**: For each generated `tiled_logs[]` entry, `ct-archive-serve` MUST set `has_issuers=true` if and only if the corresponding archive folder’s `000.zip` contains one or more entries under `issuer/` (determined from zip metadata; no full-zip decompression).
+- **FR-006c**: For each generated `tiled_logs[]` entry, `ct-archive-serve` MUST set the `state` field to indicate the log is retired. The `state` field MUST be set to `{"retired": {"timestamp": "<RFC3339 timestamp>"}}` where the timestamp is the UTC time when `ct-archive-serve` first discovered a valid `000.zip` file for that log. The discovery timestamp is tracked in-memory and preserved across archive index refreshes (but resets on server restart). If a log is discovered but `000.zip` is not yet available, the `state` field from the original `log.v3.json` is used until `000.zip` becomes available and the discovery timestamp is set.
 - **FR-007**: `ct-archive-serve` MUST provide environment variables to control `logs.v3.json` generation, including:
   - `CT_LOGLISTV3_JSON_REFRESH_INTERVAL` (default: `10m`) — optimized for large archive sets (100+ logs, 10TB+ data); operators with smaller sets may reduce this interval
 - **FR-008**: `ct-archive-serve` MUST map requested tile paths to the correct subtree zip part according to the `photocamera-archiver` subtree layout:

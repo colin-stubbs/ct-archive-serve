@@ -28,6 +28,10 @@ type ArchiveLog struct {
 
 	// ZipParts are the discovered `NNN.zip` indices for this log, sorted ascending.
 	ZipParts []int
+
+	// FirstDiscovered is the timestamp when this log was first discovered (when 000.zip was first found).
+	// This is used to set the "retired" state timestamp in logs.v3.json.
+	FirstDiscovered time.Time
 }
 
 // ArchiveIndex maintains an in-memory view of discovered logs and zip parts.
@@ -58,7 +62,7 @@ func NewArchiveIndex(cfg Config, logger *slog.Logger, metrics *Metrics) (*Archiv
 	if logger != nil {
 		logger.Debug("Building initial archive snapshot", "archive_path", cfg.ArchivePath, "folder_pattern", cfg.ArchiveFolderPrefix+"*")
 	}
-	snap, err := buildArchiveSnapshot(cfg, ai.readDir, logger)
+	snap, err := buildArchiveSnapshot(cfg, ai.readDir, logger, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +215,15 @@ func (ai *ArchiveIndex) refreshOnce() {
 	ai.refreshMu.Lock()
 	defer ai.refreshMu.Unlock()
 
-	snap, err := buildArchiveSnapshot(ai.cfg, ai.readDir, ai.logger)
+	// Get previous snapshot to preserve FirstDiscovered timestamps
+	var prevSnap *ArchiveSnapshot
+	if val := ai.snap.Load(); val != nil {
+		if snap, ok := val.(ArchiveSnapshot); ok {
+			prevSnap = &snap
+		}
+	}
+
+	snap, err := buildArchiveSnapshot(ai.cfg, ai.readDir, ai.logger, prevSnap)
 	if err != nil {
 		if ai.logger != nil {
 			ai.logger.Error("archive refresh failed", "error", err)
@@ -234,7 +246,7 @@ func (ai *ArchiveIndex) updateResourceMetrics(snap ArchiveSnapshot) {
 	ai.metrics.SetArchiveDiscovered(logCount, zipPartCount)
 }
 
-func buildArchiveSnapshot(cfg Config, readDir func(string) ([]os.DirEntry, error), logger *slog.Logger) (ArchiveSnapshot, error) {
+func buildArchiveSnapshot(cfg Config, readDir func(string) ([]os.DirEntry, error), logger *slog.Logger, prevSnap *ArchiveSnapshot) (ArchiveSnapshot, error) {
 	if readDir == nil {
 		readDir = os.ReadDir
 	}
@@ -248,6 +260,7 @@ func buildArchiveSnapshot(cfg Config, readDir func(string) ([]os.DirEntry, error
 		logger.Debug("Scanning archive directory", "path", cfg.ArchivePath, "entry_count", len(entries))
 	}
 
+	now := time.Now()
 	logs := make(map[string]ArchiveLog)
 	discoveredCount := 0
 	for _, ent := range entries {
@@ -285,11 +298,40 @@ func buildArchiveSnapshot(cfg Config, readDir func(string) ([]os.DirEntry, error
 			logger.Debug("Discovered zip parts", "log", logName, "zip_parts", zipParts)
 		}
 
+		// Determine FirstDiscovered timestamp:
+		// - If log existed in previous snapshot, preserve its FirstDiscovered timestamp
+		// - If log is new and has 000.zip, set FirstDiscovered to now
+		// - If log is new but doesn't have 000.zip yet, set to zero time (will be set when 000.zip appears)
+		var firstDiscovered time.Time
+		if prevSnap != nil {
+			if prevLog, ok := prevSnap.Logs[logName]; ok {
+				// Log existed before, preserve its discovery timestamp
+				firstDiscovered = prevLog.FirstDiscovered
+			}
+		}
+		// If this is a new log and has 000.zip, set discovery timestamp
+		if firstDiscovered.IsZero() {
+			has000Zip := false
+			for _, zp := range zipParts {
+				if zp == 0 {
+					has000Zip = true
+					break
+				}
+			}
+			if has000Zip {
+				firstDiscovered = now
+				if logger != nil {
+					logger.Debug("New log discovered with 000.zip", "log", logName, "discovered_at", firstDiscovered)
+				}
+			}
+		}
+
 		logs[logName] = ArchiveLog{
-			Log:        logName,
-			FolderName: folderName,
-			FolderPath: folderPath,
-			ZipParts:   zipParts,
+			Log:            logName,
+			FolderName:     folderName,
+			FolderPath:     folderPath,
+			ZipParts:       zipParts,
+			FirstDiscovered: firstDiscovered,
 		}
 		discoveredCount++
 	}

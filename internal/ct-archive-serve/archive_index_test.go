@@ -28,7 +28,7 @@ func TestBuildArchiveSnapshot_DiscoversLogsAndZipParts(t *testing.T) {
 		ArchiveFolderPrefix: "ct_",
 	}
 
-	snap, err := buildArchiveSnapshot(cfg, os.ReadDir, nil)
+	snap, err := buildArchiveSnapshot(cfg, os.ReadDir, nil, nil)
 	if err != nil {
 		t.Fatalf("buildArchiveSnapshot() error = %v", err)
 	}
@@ -81,7 +81,7 @@ func TestBuildArchiveSnapshot_LogCollisionFails(t *testing.T) {
 		return append(ents, ents...), nil
 	}
 
-	_, err := buildArchiveSnapshot(cfg, dupReadDir, nil)
+	_, err := buildArchiveSnapshot(cfg, dupReadDir, nil, nil)
 	if err == nil {
 		t.Fatalf("buildArchiveSnapshot() error = nil, want non-nil")
 	}
