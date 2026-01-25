@@ -31,9 +31,7 @@ jobs:
       - name: Lint
         run: |
           go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-          pwd
-          ls -ld .golangci.yml
-          golangci-lint run
+          golangci-lint run --config ./.golangci.yml
 
       - name: Upload lint results
         uses: actions/upload-artifact@v4
