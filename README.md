@@ -1,49 +1,33 @@
 # ct-archive-serve
 
-`ct-archive-serve` is an HTTP server that provides seamless access to Certificate Transparency (CT) log archives stored in the **Static-CT (tiled)** format. It serves data directly from one or more zip archive parts produced by the **`photocamera-archiver`** now available via the [ct-archive](https://github.com/geomys/ct-archive) repository, completely eliminating the need for extraction of the content from any zip file.
+> **Serve Certificate Transparency log archives directly from zip files—no extraction required.**
 
-It is specifically designed for the CT log archives distributed via torrents available under the [ct-archive](https://github.com/geomys/ct-archive) repository as [torrents.rss](https://github.com/geomys/ct-archive/blob/main/torrents.rss).
+`ct-archive-serve` is an HTTP server that provides seamless access to Certificate Transparency (CT) log archives stored in the **Static-CT (tiled)** format. It serves data directly from zip archive parts produced by [`photocamera-archiver`](https://github.com/geomys/ct-archive), eliminating the need to extract or duplicate the very large datasets involved.
 
-By serving files directly from original zip archives, it offers several major advantages:
-- **Storage Efficiency:** Avoid copying and unzipping massive datasets (currently 10TB+), more than halving your storage requirements. Just download the torrent data and serve it directly from where it landed.
-- **Compatibility:** Provides a standard HTTP interface for existing CT log monitoring clients without code changes.
-- **Frictionless Seeding:** Incentivise contributors to the CT archive torrent to remain on the network as a seed by reducing the friction created by the need to maintain a separate, extracted copy of the CT log archive data.
-```
+**Perfect for**: CT log archives distributed via torrents from the [ct-archive](https://github.com/geomys/ct-archive) repository's [torrents.rss](https://github.com/geomys/ct-archive/blob/main/torrents.rss) feed.
 
-## What it does
+**NOTE**: At present a full download of all available archives requires approximately 10-12TB+ of storage **before** extraction of any content from the zip files representing each archive. Simultaneous storage of torrent data and extracted CT log archive data will require 25TB or more of storage space. `ct-archive-serve` allows you to avoid storing anything more than the zip files themselves.
 
-- Serves **Static-CT assets** for each archived log under `/<log>/...` (checkpoint, tiles, issuers, etc.)
-- Generates and serves a **discovery log list** at `GET /logs.v3.json` (compatible with common log list v3 consumers)
-- Exposes Prometheus metrics at `GET /metrics` (low-cardinality by design)
-- Provides qBittorrent configuration to automate download of torrents
+## Table of Contents
 
-### CLI Flags
+- [Quick Start](#quick-start)
+- [Features](#features)
+- [Installation & Running](#installation--running)
+  - [Docker](#docker)
+  - [Docker Compose / Podman Compose](#docker-compose--podman-compose)
+  - [Systemd Quadlets](#systemd-quadlets)
+- [Configuration](#configuration)
+  - [Environment Variables](#environment-variables)
+  - [CLI Flags](#cli-flags)
+- [API Reference](#api-reference)
+- [Usage Examples](#usage-examples)
+- [Development](#development)
+- [Security](#security)
+- [License](#license)
 
-- `-h`, `--help`: Show help and exit
-- `-v`, `--verbose`: Enable verbose logging (log successful HTTP 2xx responses)
-- `-d`, `--debug`: Enable debug logging (slog DEBUG level)
+## Quick Start
 
-### Configuration
-
-All configuration is via environment variables. See `internal/ct-archive-serve/README.md` for details.
-
-CI/CD and artifacts:
-
-- GitHub Actions is used for CI (`.github/workflows/ci.yml`).
-- A container image is built and published to GHCR (`ghcr.io/<owner>/<repo>`) on successful builds (`.github/workflows/image.yml`).
-
-## Running via containers
-
-You can operate `ct-archive-serve` entirely via containers. The server expects an archive directory, which is expected to be the same location that your torrent client stores downloads in, on disk containing `ct_*` folders with `000.zip`, `001.zip`, etc.
-
-If a zip part exists but fails basic zip integrity checks (common while a torrent download is still in progress), `ct-archive-serve` returns HTTP `503` for requests that require that zip part. Failed zip parts are re-tried after `CT_ZIP_INTEGRITY_FAIL_TTL` (default `5m`).
-
-If `/logs.v3.json` refresh fails (e.g., due to unreadable `000.zip` or invalid `log.v3.json`), `ct-archive-serve` returns HTTP `503` for `GET /logs.v3.json` until the next successful refresh.
-
-### docker run
-
-- Ensure your archive is available on the host, e.g. `./archive/ct_example_log/000.zip`
-- Run:
+Get `ct-archive-serve` running in 30 seconds:
 
 ```bash
 docker run --rm -p 8080:8080 \
@@ -52,7 +36,46 @@ docker run --rm -p 8080:8080 \
   ghcr.io/<owner>/<repo>:latest
 ```
 
-To expose it directly on host TCP/80:
+Then access:
+- **Log list**: `http://localhost:8080/logs.v3.json`
+- **Metrics**: `http://localhost:8080/metrics`
+
+The server automatically discovers CT log archives in folders matching the pattern `ct_*` containing `000.zip`, `001.zip`, etc.
+
+## Features
+
+### Core Capabilities
+
+- **Static-CT Asset Serving**: Serves checkpoint, tiles, issuers, and other Static-CT assets for each archived log under `/<log>/...`
+- **Auto-Discovery**: Generates and serves a discovery log list at `GET /logs.v3.json` (compatible with common log list v3 consumers)
+- **Observability**: Exposes Prometheus metrics at `GET /metrics` (low-cardinality by design)
+- **Torrent Integration**: Includes qBittorrent configuration to automate download of CT archive torrents
+
+### Key Benefits
+
+- **Storage Efficiency**: Avoid copying and unzipping massive datasets (currently 10TB+), more than halving your storage requirements. Serve directly from where torrent downloads land.
+- **Compatibility**: Provides a standard HTTP interface for existing CT log monitoring clients without code changes.
+- **Frictionless Seeding**: Encourages contributors to remain on the torrent network as seeds by eliminating the need to maintain a separate, extracted copy of the archive data.
+
+### Behavior Notes
+
+- **Incomplete Downloads**: If a zip part exists but fails basic zip integrity checks (common while a torrent download is in progress), `ct-archive-serve` returns HTTP `503` for requests requiring that zip part. Failed zip parts are re-tried after `CT_ZIP_INTEGRITY_FAIL_TTL` (default `5m`).
+- **Refresh Failures**: If `/logs.v3.json` refresh fails (e.g., due to unreadable `000.zip` or invalid `log.v3.json`), `ct-archive-serve` returns HTTP `503` for `GET /logs.v3.json` until the next successful refresh.
+
+## Installation & Running
+
+### Docker
+
+Ensure your archive is available on the host (e.g., `./archive/ct_example_log/000.zip`), then run:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -v "$(pwd)/archive:/var/log/ct/archive:ro" \
+  -e CT_ARCHIVE_PATH=/var/log/ct/archive \
+  ghcr.io/<owner>/<repo>:latest
+```
+
+To expose on host TCP/80:
 
 ```bash
 docker run --rm -p 80:8080 \
@@ -61,69 +84,109 @@ docker run --rm -p 80:8080 \
   ghcr.io/<owner>/<repo>:latest
 ```
 
-### docker compose / podman compose
+### Docker Compose / Podman Compose
 
-This repository includes `compose.yml` as a quick-start example for `ct-archive-serve` on it's own.
+This repository includes two compose files:
 
-The repository also includes `compose-all.yml` as a quick-start example for running:
-1. `ct-archive-serve`
-2. `qBittorrent` (server only, no X) to download the CT archives
-3. `Prometheus` to collect and monitor the `ct-archive-serve` metrics
+- **`compose.yml`**: Quick-start example for `ct-archive-serve` standalone
+- **`compose-all.yml`**: Full stack including:
+  1. `ct-archive-serve` (HTTP server)
+  2. `qBittorrent` (server only, no X) to download CT archives
+  3. `Prometheus` to collect and monitor `ct-archive-serve` metrics
+
+**Docker Compose:**
 
 ```bash
+# Standalone
 docker compose up
-```
 
-```bash
+# Full stack
 docker compose -f ./compose-all.yml up
 ```
 
-Or:
+**Podman Compose:**
 
 ```bash
+# Standalone
 podman compose up
-```
 
-```bash
+# Full stack
 podman compose -f ./compose-all.yml up
 ```
 
-Then access:
+**Access Points:**
 
-- `GET http://localhost:8080/logs.v3.json`
-- `GET http://localhost:8080/metrics`
-- Prometheus UI: `http://localhost:9090` (if Prometheus service is enabled, e.g. `compose-all.yml`)
-- qBittorrent UI: `http://localhost:8081` (if qBittorrent service is enabled, e.g. `compose-all.yml`)
+- `ct-archive-serve`: `http://localhost:8080/logs.v3.json` and `http://localhost:8080/metrics`
+- Prometheus UI: `http://localhost:9090` (if Prometheus service is enabled, e.g., `compose-all.yml`)
+- qBittorrent UI: `http://localhost:8081` (if qBittorrent service is enabled, e.g., `compose-all.yml`)
 
 The `compose-all.yml` includes an optional Prometheus service that automatically scrapes metrics from `ct-archive-serve`. The Prometheus configuration is located in `prometheus/prometheus.yml` and is automatically loaded when the Prometheus container starts.
 
-Local tooling:
+### Systemd Quadlets
 
-- `make test`
-- `make lint` (requires `golangci-lint`)
-- `make security` (optionally uses `govulncheck` and `trivy` if installed)
+Example systemd quadlets, intended for use with Podman-based containers running as an unprivileged non-root user, are available under the `systemd` folder.
 
-# Podman/systemd Quadlets
+## Configuration
 
-Example systemd quadlets, intended for use with Podman based containers running as an unprivileged non-root user, are available under the `systemd` folder.
+### Environment Variables
 
-## Real Example
+All configuration is via environment variables. See `internal/ct-archive-serve/README.md` for complete details.
 
-Start the container,
+**Key Configuration Variables:**
 
+- `CT_ARCHIVE_PATH`: Path to archive directory (default: `/var/log/ct/archive`)
+- `CT_ARCHIVE_FOLDER_PATTERN`: Pattern for archive folders (default: `ct_*`)
+- `CT_LOGLISTV3_JSON_REFRESH_INTERVAL`: Refresh interval for logs.v3.json (default: `10m`)
+- `CT_ARCHIVE_REFRESH_INTERVAL`: Archive index refresh interval (default: `5m`)
+- `CT_ZIP_CACHE_MAX_OPEN`: Maximum open zip parts (default: `256`)
+- `CT_ZIP_INTEGRITY_FAIL_TTL`: TTL for failed zip integrity checks (default: `5m`)
+- `CT_HTTP_*`: HTTP server timeouts and limits (see security section)
+
+### CLI Flags
+
+- `-h`, `--help`: Show help and exit
+- `-v`, `--verbose`: Enable verbose logging (log successful HTTP 2xx responses)
+- `-d`, `--debug`: Enable debug logging (slog DEBUG level)
+
+## API Reference
+
+### Endpoints
+
+- **`GET /logs.v3.json`**: Returns a CT log list v3 compatible JSON document listing all discovered archived logs
+- **`GET /metrics`**: Prometheus metrics endpoint (text/plain; version=0.0.4)
+- **`GET /<log>/checkpoint`**: Serves the checkpoint for the specified log
+- **`GET /<log>/log.v3.json`**: Serves the log's v3 JSON metadata
+- **`GET /<log>/tile/<L>/<N>[.p/<W>]`**: Serves hash tiles (level L, index N, optional partial width W)
+- **`GET /<log>/tile/data/<N>[.p/<W>]`**: Serves data tiles (index N, optional partial width W)
+- **`GET /<log>/issuer/<fingerprint>`**: Serves issuer certificates (fingerprint must be lowercase hex)
+
+All endpoints support both `GET` and `HEAD` methods. Other methods return `405 Method Not Allowed`.
+
+### Response Formats
+
+- **Content Types**: Automatically set based on asset type:
+  - JSON: `application/json`
+  - Checkpoint: `text/plain; charset=utf-8`
+  - Tiles: `application/octet-stream`
+  - Issuers: `application/pkix-cert`
+- **Error Responses**:
+  - `404 Not Found`: Invalid path, missing entry, or traversal attempt
+  - `503 Service Unavailable`: Zip part temporarily unavailable (integrity check failed) or logs.v3.json refresh failed
+
+## Usage Examples
+
+### Basic Discovery
+
+Start the container:
+
+```bash
+docker compose -f ./compose.yml up
 ```
-user@box ct-archive-serve % docker compose -f ./compose.yml up  
-[+] Running 2/2
- ✔ Network ct-archive-serve_default               Created                                                                                             0.0s 
- ✔ Container ct-archive-serve-ct-archive-serve-1  Created                                                                                             0.1s 
-Attaching to ct-archive-serve-1
-ct-archive-serve-1  | {"time":"2026-01-23T11:55:57.478677053Z","level":"INFO","msg":"Starting ct-archive-serve","addr":":8080"}
-```
 
-Check logs.v3.json, initially you won't have anything,
+Initially, `logs.v3.json` will be empty:
 
-```
-user@box ct-archive-serve % curl -s http://localhost:8082/logs.v3.json | jq
+```bash
+$ curl -s http://localhost:8080/logs.v3.json | jq
 {
   "version": "3.0",
   "log_list_timestamp": "2026-01-23T11:55:57Z",
@@ -136,17 +199,18 @@ user@box ct-archive-serve % curl -s http://localhost:8082/logs.v3.json | jq
     }
   ]
 }
-user@box ct-archive-serve % 
 ```
 
-If you download one of the available CT log archives `ct-archive-serve` will auto-detect it once a folder named ct_%{SOMETHING}% is available with a valid 000.zip file (at minimum) within it.
+### Auto-Discovery
 
-If you're testing things out the two smallest logs to first download and work with are the Symantec "Vega" and "Sirius" logs.
+`ct-archive-serve` automatically detects CT log archives once a folder named `ct_*` is available with a valid `000.zip` file (at minimum) within it.
 
-As below, once I downloaded "Sirius", `ct-archive-serve` detected it and added it to the logs.v3.json content.
+**Recommended for Testing**: The two smallest logs to start with are the Symantec "Vega" and "Sirius" logs.
 
-```
-user@box ct-archive-serve % curl -s http://localhost:8082/logs.v3.json | jq
+After downloading "Sirius", it's automatically detected:
+
+```bash
+$ curl -s http://localhost:8080/logs.v3.json | jq
 {
   "version": "3.0",
   "log_list_timestamp": "2026-01-23T11:53:16Z",
@@ -162,166 +226,136 @@ user@box ct-archive-serve % curl -s http://localhost:8082/logs.v3.json | jq
           "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEowJkhCK7JewN47zCyYl93UXQ7uYVhY/Z5xcbE4Dq7bKFN61qxdglnfr0tPNuFiglN+qjN2Syxwv9UeXBBfQOtQ==",
           "mmd": 0,
           "log_type": "",
-          "state": null,
-          "submission_url": "http://localhost:8082/symantec_sirius",
-          "monitoring_url": "http://localhost:8082/symantec_sirius",
+          "state": {
+            "retired": {
+              "timestamp": "2026-01-23T11:53:16Z"
+            }
+          },
+          "submission_url": "http://localhost:8080/symantec_sirius",
+          "monitoring_url": "http://localhost:8080/symantec_sirius",
           "has_issuers": false
         }
       ]
     }
   ]
 }
-user@box ct-archive-serve % 
 ```
 
-As additional logs are downloaded and become available as verified .zip files, they'll be served:
+### Multiple Logs
 
-```
-user@box archive % curl -s http://localhost:8082/logs.v3.json | jq       
-{
-  "version": "3.0",
-  "log_list_timestamp": "2026-01-23T12:15:57Z",
-  "operators": [
-    {
-      "name": "ct-archive-serve",
-      "email": [],
-      "logs": [],
-      "tiled_logs": [
-        {
-          "description": "Sectigo 'Mammoth2024h1'",
-          "log_id": "KdA6G7Z0qnEc0wNbZVfBT4qni0/oOJRJ7KRT+US9JGg=",
-          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEpFmQ83EkJPfDVSdWnKNZHve3n86rThlmTdCK+p1ipCTwOyDkHRRnyPzkN/JLOFRaz59rB5DQDn49TIey6D8HzA==",
-          "mmd": 0,
-          "log_type": "",
-          "state": null,
-          "submission_url": "http://localhost:8082/sectigo_mammoth2024h1",
-          "monitoring_url": "http://localhost:8082/sectigo_mammoth2024h1",
-          "has_issuers": true
-        },
-        {
-          "description": "Symantec 'Sirius' log",
-          "log_id": "FZcEiNe5l6Bb61JRKt7o0ui0oxZSZBIan6v71fha2T8=",
-          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEowJkhCK7JewN47zCyYl93UXQ7uYVhY/Z5xcbE4Dq7bKFN61qxdglnfr0tPNuFiglN+qjN2Syxwv9UeXBBfQOtQ==",
-          "mmd": 0,
-          "log_type": "",
-          "state": null,
-          "submission_url": "http://localhost:8082/symantec_sirius",
-          "monitoring_url": "http://localhost:8082/symantec_sirius",
-          "has_issuers": false
-        },
-        {
-          "description": "Symantec 'Vega' log",
-          "log_id": "vHjh38X2PGhGSTNNoQ+hXwl5aSAJwIG08/aRfz7ZuKU=",
-          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE6pWeAv/u8TNtS4e8zf0ZF2L/lNPQWQc/Ai0ckP7IRzA78d0NuBEMXR2G3avTK0Zm+25ltzv9WWis36b4ztIYTQ==",
-          "mmd": 0,
-          "log_type": "",
-          "state": null,
-          "submission_url": "http://localhost:8082/symantec_vega",
-          "monitoring_url": "http://localhost:8082/symantec_vega",
-          "has_issuers": false
-        }
-      ]
-    }
-  ]
-}
-user@box archive % 
+As additional logs are downloaded and become available as verified zip files, they're automatically added to the log list:
+
+```bash
+$ curl -s http://localhost:8080/logs.v3.json | jq '.operators[0].tiled_logs | length'
+3
 ```
 
-# Development
+## Development
 
-## Workflow (spec-driven)
+### Workflow (Spec-Driven)
 
 This repo uses `.specify/` + `specs/<feature>/` for spec-driven development.
 
-- Current feature spec set: `specs/001-ct-archive-serve/`
-  - `spec.md`: requirements and clarifications
-  - `plan.md`: implementation plan
-  - `tasks.md`: task breakdown
-  - Supporting docs: `contracts/`, `checklists/`, `quickstart.md`, `research.md`, `data-model.md`
+**Current feature spec set**: `specs/001-ct-archive-serve/`
+- `spec.md`: Requirements and clarifications
+- `plan.md`: Implementation plan
+- `tasks.md`: Task breakdown
+- Supporting docs: `contracts/`, `checklists/`, `quickstart.md`, `research.md`, `data-model.md`
 
-### Speckit Usage
+**Speckit Usage**: The `.specify/scripts/bash/check-prerequisites.sh` helper locates the active spec directory based on the **numeric branch prefix** (e.g., branch `001-...` maps to `specs/001-*`).
 
-The `.specify/scripts/bash/check-prerequisites.sh` helper locates the active spec directory based on the **numeric branch prefix** (e.g. branch `001-...` maps to `specs/001-*`).
+### Code Structure
 
-## Code
-
-Implementation code lives under:
-
-```text
+```
 cmd/ct-archive-serve/        # CLI entrypoint
 internal/ct-archive-serve/   # Core implementation
 ```
 
-Go version:
+**Go Version**: Target runtime **Go 1.25.5+**
 
-- Target runtime: **Go 1.25.5+**
+### Local Tooling
+
+- `make test`: Run tests
+- `make lint`: Run linters (requires `golangci-lint`)
+- `make security`: Run security checks (optionally uses `govulncheck` and `trivy` if installed)
+
+### CI/CD
+
+- **GitHub Actions**: CI runs on `.github/workflows/ci.yml`
+- **Container Images**: Built and published to GHCR (`ghcr.io/<owner>/<repo>`) on successful builds via `.github/workflows/image.yml`
 
 ## Security
 
-`ct-archive-serve` is designed with security in mind, implementing multiple layers of protection against common attack vectors. While it is intended for container-based operation behind a reverse proxy, the code includes built-in security measures that protect even when running outside a container.
+`ct-archive-serve` implements multiple layers of security protection. While designed for container-based operation behind a reverse proxy, it includes built-in security measures that protect even when running standalone.
+
+### Security Summary
+
+- ✅ **Path Traversal Protection**: Strict validation prevents directory traversal attacks
+- ✅ **Input Validation**: All request parameters validated before processing
+- ✅ **Zip Entry Security**: Secure access controls for zip file contents
+- ✅ **HTTP Security**: Safe timeouts and limits to prevent resource exhaustion
+- ✅ **Trusted Source Validation**: `X-Forwarded-*` headers validated against trusted sources
+- ✅ **Container Security**: Non-root user, read-only mounts, secure defaults
+- ✅ **Error Handling**: No information leakage, consistent error responses
 
 ### Path Traversal Protection
 
-`ct-archive-serve` implements strict path validation to prevent directory traversal attacks:
+Strict path validation prevents directory traversal attacks:
 
-- **Percent-encoded attacks**: Any request path containing `%` characters is immediately rejected with `404`. This prevents percent-encoded traversal attempts (e.g., `%2e%2e` for `..`).
-- **Directory traversal**: Any request path containing `..` is rejected with `404`, preventing attempts to escape the archive namespace (e.g., `/valid_log/../../etc/passwd`).
-- **Log name validation**: The `<log>` path segment is validated to reject empty strings, `.`, and `..` as log names.
-- **EntryPath construction**: Zip entry paths (`EntryPath`) are constructed from validated segments, never from raw user input. This ensures that even if a malicious zip file contains entries with traversal sequences, they cannot be accessed via HTTP requests.
+- **Percent-encoded attacks**: Any request path containing `%` characters is immediately rejected with `404`
+- **Directory traversal**: Any request path containing `..` is rejected with `404`
+- **Log name validation**: The `<log>` path segment is validated to reject empty strings, `.`, and `..`
+- **EntryPath construction**: Zip entry paths are constructed from validated segments, never from raw user input
 
 ### Input Validation
 
-All request parameters are strictly validated before processing:
+All request parameters are strictly validated:
 
-- **Tile level validation**: Hash tile level `<L>` must be a base-10 integer in the range 0-255. Invalid values return `404`.
-- **Tile index validation**: Tile indices use C2SP "groups-of-three" decimal encoding with strict format validation. Invalid segments (wrong length, non-decimal characters, missing `x` prefix where required) return `404`.
-- **Partial tile width**: For `.p/<W>` requests, `<W>` must be a base-10 integer in the range 1-255. Invalid values return `404`.
-- **Issuer fingerprint validation**: Issuer fingerprints must be non-empty lowercase hexadecimal strings (`0-9a-f`). Uppercase hex or non-hex characters return `404`.
-- **HTTP method policy**: Only `GET` and `HEAD` are allowed for supported routes. Other methods return `405 Method Not Allowed` with `Allow: GET, HEAD` header.
+- **Tile level**: Hash tile level `<L>` must be a base-10 integer in range 0-255
+- **Tile index**: Uses C2SP "groups-of-three" decimal encoding with strict format validation
+- **Partial tile width**: For `.p/<W>` requests, `<W>` must be 1-255
+- **Issuer fingerprint**: Must be non-empty lowercase hexadecimal (`0-9a-f`)
+- **HTTP method policy**: Only `GET` and `HEAD` allowed; others return `405 Method Not Allowed`
 
 ### Zip Entry Access Security
 
-Zip entry access is secured through multiple mechanisms:
-
-- **Exact string matching**: Zip entries are looked up using exact string matching against the validated `EntryPath`. This prevents accessing entries with malicious names even if they exist in zip files.
-- **No filesystem access**: The server never constructs filesystem paths from user input. All zip file paths are derived from the validated archive index, which is built from discovered folders matching the configured pattern.
-- **Archive namespace isolation**: Requests can only access content within the configured archive directory. There is no mechanism to access files outside this directory, even if path traversal sequences are attempted.
+- **Exact string matching**: Zip entries looked up using exact string matching against validated paths
+- **No filesystem access**: Server never constructs filesystem paths from user input
+- **Archive namespace isolation**: Requests can only access content within the configured archive directory
 
 ### HTTP Security Configuration
 
-`ct-archive-serve` configures safe HTTP server defaults to prevent resource exhaustion:
+Safe HTTP server defaults prevent resource exhaustion:
 
-- **Read header timeout**: Configurable via `CT_HTTP_READ_HEADER_TIMEOUT` (default: `5s`) to prevent slow clients from holding connections open.
-- **Idle timeout**: Configurable via `CT_HTTP_IDLE_TIMEOUT` (default: `60s`) to close idle connections.
-- **Max header bytes**: Configurable via `CT_HTTP_MAX_HEADER_BYTES` (default: `8192`) to limit request header size.
-- **Read/Write timeouts**: Configurable via `CT_HTTP_READ_TIMEOUT` and `CT_HTTP_WRITE_TIMEOUT` (default: `0`, disabled) for additional protection against slow clients.
+- `CT_HTTP_READ_HEADER_TIMEOUT` (default: `5s`): Prevents slow clients from holding connections
+- `CT_HTTP_IDLE_TIMEOUT` (default: `60s`): Closes idle connections
+- `CT_HTTP_MAX_HEADER_BYTES` (default: `8192`): Limits request header size
+- `CT_HTTP_READ_TIMEOUT` / `CT_HTTP_WRITE_TIMEOUT` (default: `0`, disabled): Additional protection
 
 ### Trusted Source Validation
 
-For `/logs.v3.json` URL formation, `ct-archive-serve` validates `X-Forwarded-*` headers:
+For `/logs.v3.json` URL formation, `X-Forwarded-*` headers are validated:
 
-- **Untrusted by default**: `X-Forwarded-Host` and `X-Forwarded-Proto` are **ignored by default** and only used when the request source IP matches a trusted source configured via `CT_HTTP_TRUSTED_SOURCES`.
-- **Source IP validation**: The request source IP is extracted from `RemoteAddr` and validated against configured IP addresses or CIDR ranges.
-- **Header logging**: Even when ignored, `X-Forwarded-*` headers are logged for security auditing purposes.
-- **Comma-separated handling**: When multiple values are present (e.g., from multiple proxies), the first non-empty value after trimming whitespace is used.
+- **Untrusted by default**: `X-Forwarded-Host` and `X-Forwarded-Proto` are **ignored by default**
+- **Source IP validation**: Only used when request source IP matches `CT_HTTP_TRUSTED_SOURCES` (CSV of IPs/CIDRs)
+- **Header logging**: Even when ignored, headers are logged for security auditing
+- **Comma-separated handling**: First non-empty value after trimming whitespace is used
 
 ### Container Security Defaults
 
-When running in a container, `ct-archive-serve` uses secure defaults:
-
-- **Non-root user**: The container runs as `nobody/nogroup` (non-root) by default.
-- **Read-only archive mount**: Archive directories should be mounted read-only (`:ro`) to prevent modification.
-- **Port binding**: Listens on TCP/8080 by default. Operators can publish to host port 80 via `-p 80:8080` if needed.
+- **Non-root user**: Container runs as `nobody/nogroup` by default
+- **Read-only mounts**: Archive directories should be mounted read-only (`:ro`)
+- **Port binding**: Listens on TCP/8080; operators can publish to host port 80 via `-p 80:8080`
 
 ### Security Responsibilities: Reverse Proxy
 
 `ct-archive-serve` is designed to run behind a reverse proxy that handles edge security controls:
 
-- **TLS termination**: The reverse proxy should terminate TLS/HTTPS. `ct-archive-serve` serves plain HTTP only.
-- **Rate limiting**: Rate limiting should be implemented at the reverse proxy level to prevent abuse.
-- **WAF rules**: Web Application Firewall (WAF) rules, if needed, should be applied at the reverse proxy.
-- **Authentication/Authorization**: Any authentication or authorization requirements should be handled by the reverse proxy.
-- **Request Logging*: `ct-archive-serve` logs request failures to stdout. Use standard container output logging mechanisms, or stdout based redirection if running without a container, in order to log request failures. If you require logging of successful requests be aware that this will likely be very high volume and should be performed by the reverse proxy.
+- **TLS termination**: Reverse proxy should terminate TLS/HTTPS (`ct-archive-serve` serves plain HTTP only) if required
+- **Rate limiting**: Should be implemented at the reverse proxy level if required
+- **WAF rules**: Web Application Firewall rules, if needed, should be applied at the reverse proxy if required
+- **Authentication/Authorization**: Should be handled by the reverse proxy if required
+- **Request logging**: `ct-archive-serve` logs request failures to stdout and errors to stderr. For successful request logging (bear in mind it will likely be in high volume bursts), use the reverse proxy.
 
 **Important**: When using a reverse proxy, configure `CT_HTTP_TRUSTED_SOURCES` to include the proxy's source IPs/CIDRs so `X-Forwarded-*` headers are only honored from that boundary.
 
@@ -329,10 +363,12 @@ When running in a container, `ct-archive-serve` uses secure defaults:
 
 Security-conscious error handling:
 
-- **No information leakage**: Error messages do not expose filesystem paths, internal structure, or sensitive information.
-- **Consistent 404 responses**: Invalid paths, missing entries, and traversal attempts all return `404 Not Found` without distinguishing between them, preventing information disclosure.
-- **503 for unavailable content**: When zip parts fail integrity checks (e.g., incomplete downloads), the server returns `503 Service Unavailable` rather than `404`, indicating temporary unavailability rather than permanent absence.
+- **No information leakage**: Error messages don't expose filesystem paths, internal structure, or sensitive information
+- **Consistent 404 responses**: Invalid paths, missing entries, and traversal attempts all return `404 Not Found` without distinguishing between them
+- **503 for unavailable content**: When zip parts fail integrity checks, server returns `503 Service Unavailable` (not `404`) to indicate temporary unavailability
 
 ## License
 
-TBD
+This project is licensed under the **GNU General Public License v3.0** (GPL-3.0).
+
+See the [LICENSE](LICENSE) file in this repository for the full license text, or visit [https://www.gnu.org/licenses/gpl-3.0.html](https://www.gnu.org/licenses/gpl-3.0.html) for more information.
