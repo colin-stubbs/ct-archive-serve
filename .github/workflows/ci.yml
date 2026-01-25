@@ -28,9 +28,9 @@ jobs:
         run: go test -race ./...
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          golangci-lint run
 
       - name: Vulnerability check (govulncheck)
         run: |
