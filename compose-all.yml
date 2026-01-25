@@ -1,0 +1,157 @@
+---
+volumes:
+  prometheus_data:
+    # Named volume persists data across container restarts
+    # For local development, you may want to use a bind mount instead:
+    # driver: local
+    # driver_opts:
+    #   type: none
+    #   o: bind
+    #   device: ./prometheus-data
+
+services:
+  ct-archive-serve:
+    image: colin-stubbs/ct-archive-serve:latest
+
+    ports:
+      # Default: expose container port 8080 on host 8080.
+      - "${CT_ARCHIVE_SERVE_HOST:-127.0.0.1}:${CT_ARCHIVE_SERVE_PORT:-8080}:8080"
+      # Optional: expose directly on host TCP/80.
+      # - "80:8080"
+
+    environment:
+      - TZ=${TZ:-Etc/UTC}
+
+      # ============================================================================
+      # Archive Configuration
+      # ============================================================================
+      
+      # Archive root directory inside the container (default: /var/log/ct/archive)
+      - CT_ARCHIVE_PATH=/var/log/ct/archive
+      
+      # Glob pattern for matching log folders, must end with '*' (default: ct_*)
+      # Example: ct_* matches folders like ct_digicert_nessie_2022/
+      - CT_ARCHIVE_FOLDER_PATTERN=ct_*
+
+      # ============================================================================
+      # Refresh Intervals
+      # ============================================================================
+      
+      # Interval for refreshing /logs.v3.json (default: 10m)
+      # Format: Go duration (e.g., 10m, 5m, 30s, 1h)
+      # Optimized for large archive sets (100+ logs, 10TB+ data)
+      #- CT_LOGLISTV3_JSON_REFRESH_INTERVAL=10m
+      
+      # Interval for refreshing archive index (default: 5m)
+      # Format: Go duration (e.g., 5m, 1m, 30s)
+      # Optimized for large archive sets to reduce disk I/O
+      #- CT_ARCHIVE_REFRESH_INTERVAL=5m
+
+      # ============================================================================
+      # Zip Cache Configuration
+      # ============================================================================
+      
+      # Maximum number of open zip parts to cache (default: 256)
+      # Higher values improve performance for hot zip parts but increase memory usage
+      # Operators with very large working sets may increase this value
+      #- CT_ZIP_CACHE_MAX_OPEN=256
+      
+      # TTL for failed zip integrity checks (default: 5m)
+      # Failed zip parts are re-tested after this interval
+      # Format: Go duration (e.g., 5m, 1m, 10m)
+      #- CT_ZIP_INTEGRITY_FAIL_TTL=5m
+
+      # ============================================================================
+      # HTTP Server Configuration
+      # ============================================================================
+      
+      # Maximum time to read request headers (default: 5s)
+      # Format: Go duration (e.g., 5s, 10s, 0 to disable)
+      #- CT_HTTP_READ_HEADER_TIMEOUT=5s
+      
+      # Maximum idle connection timeout (default: 60s)
+      # Format: Go duration (e.g., 60s, 2m, 0 to disable)
+      #- CT_HTTP_IDLE_TIMEOUT=60s
+      
+      # Maximum size of request headers in bytes (default: 8192)
+      # Must be > 0
+      #- CT_HTTP_MAX_HEADER_BYTES=8192
+      
+      # Maximum time to write response (default: 0, disabled)
+      # Format: Go duration (e.g., 30s, 1m, 0 to disable)
+      #- CT_HTTP_WRITE_TIMEOUT=0
+      
+      # Maximum time to read request body (default: 0, disabled)
+      # Format: Go duration (e.g., 30s, 1m, 0 to disable)
+      #- CT_HTTP_READ_TIMEOUT=0
+
+      # ============================================================================
+      # Reverse Proxy Configuration
+      # ============================================================================
+      
+      # CSV list of trusted IP addresses or CIDR networks for X-Forwarded-* headers
+      # If set, X-Forwarded-Host and X-Forwarded-Proto are trusted when request
+      # source IP matches. If unset or empty, X-Forwarded-* headers are ignored.
+      # Format: comma-separated IPs or CIDRs (e.g., 127.0.0.1/32,10.0.0.0/8)
+      # Recommended when running behind a reverse proxy (nginx, traefik, etc.)
+      #- CT_HTTP_TRUSTED_SOURCES=127.0.0.1/32
+      #- CT_HTTP_TRUSTED_SOURCES=192.168.1.0/24
+      #- CT_HTTP_TRUSTED_SOURCES=127.0.0.1/32,10.0.0.0/8,172.16.0.0/12
+
+    volumes:
+      # Put your downloaded `ct_*` folders under ./archive on the host. ct-archive-serve does not require more than read-only access.
+      - ./archive:/var/log/ct/archive:ro
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    ports:
+      - "${PROMETHEUS_HOST:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      # Retention period (default is 15 days, adjust based on storage capacity)
+      # Examples: 7d, 15d, 30d, 90d
+      - '--storage.tsdb.retention.time=15d'
+      # Maximum number of blocks to keep (optional, helps manage disk usage)
+      # - '--storage.tsdb.retention.size=10GB'
+      # Enable WAL compression (reduces disk usage)
+      - '--storage.tsdb.wal-compression'
+      # Web UI configuration
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      # Enable lifecycle API (for runtime configuration reload via POST /-/reload)
+      - '--web.enable-lifecycle'
+      # Enable admin API (for administrative operations)
+      - '--web.enable-admin-api'
+
+  qbittorrent:
+    image: docker.io/qbittorrentofficial/qbittorrent-nox:latest
+    environment:
+      - TZ=${TZ:-Etc/UTC}
+      # Disables display/prompt and manual repsonse requirement related to the legal notice.
+      - QBT_LEGAL_NOTICE=${QBT_LEGAL_NOTICE:-confirm}
+      # qBittorrent WebUI port (default: 8081)
+      - QBT_WEBUI_PORT=${QBT_WEBUI_PORT:-8081}
+      # qBittorrent Torrenting port (default: 6881)
+      - QBT_TORRENTING_PORT=${QBT_TORRENTING_PORT:-6881}
+      # qBittorrent PUID (default: 1000)
+      - PUID=${PUID:-1000}
+      # qBittorrent PGID (default: 1000)
+      - PGID=${PGID:-1000}
+      # qBittorrent UMASK (default: 022), ensures proper file permissions are set for files created by qBittorrent.
+      - UMASK=${UMASK:-022}
+    volumes:
+      # persistent custom qBittorrent configuration,
+      - ./qbittorrent:/config
+      # shared storage with ct-archive-serve
+      - ./archive:/downloads
+    ports:
+      - ${QBT_WEBUI_HOST:-127.0.0.1}:${QBT_WEBUI_PORT:-8081}:${QBT_WEBUI_PORT:-8081}/tcp
+      - ${QBT_TORRENTING_HOST:-0.0.0.0}:${QBT_TORRENTING_PORT:-6881}:${QBT_TORRENTING_PORT:-6881}/tcp
+      - ${QBT_TORRENTING_HOST:-0.0.0.0}:${QBT_TORRENTING_PORT:-6881}:${QBT_TORRENTING_PORT:-6881}/udp
+    restart: unless-stopped

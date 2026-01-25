@@ -1,0 +1,99 @@
+# golangci-lint configuration for ct-archive-serve
+# Intended for Go 1.25.5+.
+# Focus: Security, correctness, and maintainability
+
+version: "2"
+
+run:
+  tests: true
+  timeout: 10m
+  # Build tags if needed
+  # build-tags:
+  #   - integration
+
+output:
+  formats:
+    text:
+      path: stdout
+    json:
+      path: lint.json
+
+linters:
+  enable:
+    # Core correctness and security
+    - errcheck          # Check that error return values are used
+    - govet             # Go vet - catches bugs and suspicious constructs
+    - staticcheck       # Static analysis with security focus
+    - unused            # Find unused code
+    - ineffassign       # Detect ineffectual assignments
+    
+    # Security-focused linters
+    - gosec             # Security checker (SQL injection, hardcoded secrets, etc.)
+    - gocritic          # Code quality and security patterns
+    - bodyclose         # Check HTTP response bodies are closed
+    - noctx             # Check context.Context is passed to functions
+    # - forbidigo         # Disabled: os.Exit in main.go is intentional for CLI exit codes
+    - copyloopvar       # Detect places where loop variables are copied (Go 1.22+)
+    - errorlint         # Find error handling issues
+    - errname           # Check error naming conventions
+    # - wrapcheck         # Disabled: false positives on fmt.Errorf/errors.New (error creation, not wrapping)
+    - prealloc          # Detect slice declarations that could be pre-allocated
+    - makezero          # Check for make() calls with zero length
+    - perfsprint        # Suggest faster string formatting
+    - unconvert         # Remove unnecessary type conversions
+    - misspell          # Find commonly misspelled words
+
+  settings:
+    gosec:
+      # Include all security checks by default
+      # Exclude only specific rules that are false positives or not applicable
+      # G304: File inclusion via variable - handled with inline //nolint comments
+      # G115: Integer overflow - handled with bounds checks and inline comments
+      severity: high
+      confidence: medium
+      # Track suppressions for audit purposes
+      # track-suppressions: true
+    
+    gocritic:
+      enabled-tags:
+        - performance
+        - style
+        - diagnostic
+        - opinionated
+      disabled-checks:
+        # Allow some style choices
+        - commentFormatting
+        - ifElseChain
+        # Disable performance suggestions (not correctness issues)
+        - hugeParam
+        - httpNoBody
+        - rangeValCopy
+    
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+      # Exclude fmt.Fprintf to stdout (intentional for help output)
+      # Exclude Close() methods (already handled with _ = pattern in defer)
+      exclude-functions:
+        - 'fmt.Fprintf'
+        - '(*os.File).Close'
+        - '(*archive/zip.ReadCloser).Close'
+        - '(*archive/zip.File).Close'
+        - '(io.Closer).Close'
+    
+    govet:
+      enable-all: true
+      disable:
+        # Disable fieldalignment (memory optimization, not correctness)
+        - fieldalignment
+    
+    staticcheck:
+      checks: ["all", "-SA1019", "-ST1000"] # Exclude deprecated API warnings and package comment requirement
+    
+
+issues:
+  # Maximum issues count per one linter
+  max-issues-per-linter: 0
+  # Maximum count of issues with the same text
+  max-same-issues: 0
+

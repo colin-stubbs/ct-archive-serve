@@ -1,0 +1,20 @@
+.git
+.github
+.cursor
+.specify
+
+bin
+dist
+build
+
+*.log
+*.out
+coverage.*
+
+.DS_Store
+
+# Local archive data (examples / tests / operators)
+archive
+archives
+data
+

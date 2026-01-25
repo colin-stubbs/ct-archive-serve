@@ -30,3 +30,15 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# executables
+bin/
+
+# golangci-lint output
+lint.json
+
+# ignore additional qBittorrent content that is not required for a fresh start
+qbittorrent/
+# ignore all CT archive content... this would kill git if not ignored.
+archive/
+
