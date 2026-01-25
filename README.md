@@ -33,7 +33,7 @@ Get `ct-archive-serve` running in 30 seconds:
 docker run --rm -p 8080:8080 \
   -v "$(pwd)/archive:/var/log/ct/archive:ro" \
   -e CT_ARCHIVE_PATH=/var/log/ct/archive \
-  ghcr.io/<owner>/<repo>:latest
+  ghcr.io/colin-stubbs/ct-archive-serve:latest
 ```
 
 Then access:
@@ -72,7 +72,7 @@ Ensure your archive is available on the host (e.g., `./archive/ct_example_log/00
 docker run --rm -p 8080:8080 \
   -v "$(pwd)/archive:/var/log/ct/archive:ro" \
   -e CT_ARCHIVE_PATH=/var/log/ct/archive \
-  ghcr.io/<owner>/<repo>:latest
+  ghcr.io/colin-stubbs/ct-archive-serve:latest
 ```
 
 To expose on host TCP/80:
@@ -81,7 +81,7 @@ To expose on host TCP/80:
 docker run --rm -p 80:8080 \
   -v "$(pwd)/archive:/var/log/ct/archive:ro" \
   -e CT_ARCHIVE_PATH=/var/log/ct/archive \
-  ghcr.io/<owner>/<repo>:latest
+  ghcr.io/colin-stubbs/ct-archive-serve:latest
 ```
 
 ### Docker Compose / Podman Compose
@@ -282,7 +282,7 @@ internal/ct-archive-serve/   # Core implementation
 ### CI/CD
 
 - **GitHub Actions**: CI runs on `.github/workflows/ci.yml`
-- **Container Images**: Built and published to GHCR (`ghcr.io/<owner>/<repo>`) on successful builds via `.github/workflows/image.yml`
+- **Container Images**: Built and published to GHCR (`ghcr.io/colin-stubbs/ct-archive-serve`) on successful builds via `.github/workflows/image.yml`
 
 ## Security
 

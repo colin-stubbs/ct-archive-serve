@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: colin-stubbs/ct-archive-serve:latest
+    image: ghcr.io/colin-stubbs/ct-archive-serve:latest
 
     ports:
       # Default: expose container port 8080 on host 8080.
