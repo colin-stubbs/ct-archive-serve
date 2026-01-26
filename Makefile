@@ -30,10 +30,12 @@ clean:
 	@echo "✅ Cleanup completed"
 
 test:
-	go test -v ./...
+	go test -v ./... 1>test.log 2>&1
+	cat test.log
 
 force-test:
-	go test -v -count=1 ./...
+	go test -v -count=1 ./... 1>test.log 2>&1
+	cat test.log
 
 lint:
 	golangci-lint run ./...
@@ -54,7 +56,7 @@ build-container:
 build-container-multi:
 	@echo "🔨 Building multi-platform Docker image..."
 	docker buildx create --use --name multi-builder || true
-	docker buildx build --platform linux/amd64,linux/arm64 -t $(IMAGE_NAME):$(TAG) --load .
+	docker buildx build --platform linux/amd64,linux/arm64 -t $(REGISTRY_IMAGE):$(TAG) --load .
 	@echo "✅ Multi-platform build completed"
 
 push-container-docker-hub:

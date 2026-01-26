@@ -11,6 +11,9 @@
 # Test binary, built with `go test -c`
 *.test
 
+# Test log
+test.log
+
 # Code coverage profiles and other test artifacts
 *.out
 coverage.*
@@ -49,3 +52,5 @@ qbittorrent/
 # ignore all CT archive content... this would kill git if not ignored.
 archive/
 
+# don't include profile results
+*.prof
