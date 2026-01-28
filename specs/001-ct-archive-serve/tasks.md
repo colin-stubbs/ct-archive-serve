@@ -47,7 +47,7 @@
 ### Low-cardinality Prometheus metrics
 
 - [x] T007 Add metrics unit tests in `internal/ct-archive-serve/metrics_test.go` asserting low-cardinality labels: only `/logs.v3.json` aggregate, and per-`<log>` aggregate for all `/<log>/...` combined (no full-path / endpoint / status labels per `spec.md` `NFR-009`)
-- [x] T008 Implement metrics in `internal/ct-archive-serve/metrics.go` (counters + durations for `/logs.v3.json`, and counters + durations labeled by `log` for `/<log>/...`)
+- [x] T008 Implement metrics in `internal/ct-archive-serve/metrics.go` per `spec.md` `NFR-009`: counters + durations for `/logs.v3.json`; per-log metrics (total, successful/2xx, failed/4xx, errors/5xx counters, and duration histogram labeled by `log` for valid discovered logs); nonexistent log metrics (total, successful/2xx, failed/4xx, errors/5xx counters, and duration histogram without `log` label for requests to nonexistent logs). All metrics MUST be updated at response time.
 - [x] T048 Add resource observability metrics tests in `internal/ct-archive-serve/metrics_test.go` (assert low-cardinality gauges exist for cache/index/integrity state and have no per-request/path labels; aligns with constitution Principle IV) **[Note: Tests may initially fail until T049 is complete; this is acceptable for test-driven development]**
 - [x] T049 Implement resource observability gauges in `internal/ct-archive-serve/metrics.go` (e.g., open zip parts, cache size/evictions, integrity passed/failed counts, discovered logs/zip parts) and update `server.go`/caches to keep them current **[Blocks: T048 tests will fail until this is complete]**
 
