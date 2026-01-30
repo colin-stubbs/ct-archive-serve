@@ -97,11 +97,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
   - `GET /<log>/issuer/<fingerprint>` → `application/pkix-cert`
   - `GET /<log>/tile/<L>/<N>[.p/<W>]` → `application/octet-stream`
   - `GET /<log>/tile/data/<N>[.p/<W>]` → `application/octet-stream`
-  Additionally, when serving a file-like asset, `ct-archive-serve` MUST set `Content-Type` appropriately based on the asset being served, including:
-  - any `*.json` response as `application/json`
-  - any `/checkpoint` response as `text/plain; charset=utf-8`
-  - any tile response as `application/octet-stream`
-  - any issuer response as `application/pkix-cert`
+  File-like assets MUST use the `Content-Type` values given in the path list above for their endpoint.
 - **FR-002a**: HTTP method policy:
   - For all supported endpoints, `ct-archive-serve` MUST support `GET` and `HEAD`.
   - For `HEAD`, the server MUST behave as for `GET` but MUST NOT include a response body.
@@ -266,7 +262,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
 - **NFR-002**: The server MUST limit responses to files within the archive set and MUST NOT expose the filesystem beyond the archive directory.
 - **NFR-003**: The server MUST open and read `.zip` parts in a seekable (random-access) manner so that serving a single zip entry does not require loading or decompressing the entire `.zip` file into memory; the server MAY read zip metadata (central directory) and MUST only decompress the requested entry data.
 - **NFR-004**: The implementation MUST use Go’s standard library `archive/zip` in a random-access mode (e.g., `zip.OpenReader` or `zip.NewReader` over an `io.ReaderAt`) so the server can locate a specific entry via the central directory and stream-decompress only that entry.
-- **NFR-005**: The server MUST support high concurrency safely. Shared caches and indices MUST be concurrency-safe and SHOULD minimize contention (e.g., sharding by log/zip part).
+- **NFR-005**: The server MUST support high concurrency safely. Shared caches and indices MUST be concurrency-safe and SHOULD minimize contention (e.g., sharding by log/zip part). Request-path design MUST NOT allow a single global lock to dominate under concurrency (see `SC-006` for performance validation).
 - **NFR-006**: The server MUST bound resource usage for its performance optimizations:
   - the number of open zip parts MUST be capped (`CT_ZIP_CACHE_MAX_OPEN`)
   - cached indices and open-file state MUST be evictable (e.g., LRU) to handle large working sets
