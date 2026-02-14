@@ -91,7 +91,7 @@
 
 - [x] T020 [P] [US1] Add `publicBaseURL` derivation tests in `internal/ct-archive-serve/server_test.go` (trusted-source gating via `CT_HTTP_TRUSTED_SOURCES`, comma-separated `X-Forwarded-*`, whitespace trimming, `Host` fallback, scheme lowercasing) per `spec.md` (`FR-006`, `FR-012`)
 - [x] T021 [US1] Implement `publicBaseURL` derivation helper in `internal/ct-archive-serve/server.go` per `spec.md` (`FR-006`, `FR-012`)
-- [x] T022 [P] [US1] Add loglist v3 json snapshot builder tests in `internal/ct-archive-serve/loglistv3_json_test.go` (extract+parse `log.v3.json` from `000.zip`, set `has_issuers` from presence of `issuer/`, remove `url`, set `submission_url`/`monitoring_url`, deterministic sort by `<log>`, validate generated JSON using `loglist3` library from `github.com/google/certificate-transparency-go/loglist3` per `spec.md` `FR-006` validation requirement)
+- [x] T022 [P] [US1] Add loglist v3 json snapshot builder tests in `internal/ct-archive-serve/loglistv3_json_test.go` (extract+parse `log.v3.json` from `000.zip`, set `has_issuers` from presence of `issuer/`, remove `url`, set `submission_url`/`monitoring_url`, deterministic sort by `<log>`, empty archive returns 200 with valid log list v3 and empty `tiled_logs[]` per FR-006, validate generated JSON using `loglist3` library from `github.com/google/certificate-transparency-go/loglist3` per `spec.md` `FR-006` validation requirement)
 - [x] T023 [US1] Implement loglist v3 json snapshot builder in `internal/ct-archive-serve/loglistv3_json.go` per `spec.md` (`FR-006`, `FR-006a`, `FR-006b`, `FR-006c`)
   - **Implementation note**: Optimized to open each `000.zip` file only once per log to extract both `log.v3.json` and check for `issuer/` entries (via `extractLogV3JSONAndCheckIssuers`), rather than opening the same ZIP file twice. This significantly reduces startup time for large archives (per `spec.md` `FR-006` ZIP optimization).
   - **Implementation note (mtime caching)**: Added mtime-based caching to avoid re-reading unchanged zip files. Before opening a `000.zip` file, the implementation checks the file's modification time. If the mtime matches the cached mtime, cached data is used without opening the ZIP file. Cache entries are automatically cleaned up when logs are removed from the archive index. This optimization significantly reduces disk I/O and CPU usage during periodic refreshes for large, stable archive sets (per `spec.md` `FR-006` mtime-based caching).
@@ -143,7 +143,7 @@
 - [x] T043 Record completion notes in `CHANGES.md` (most recent entry first, with date and bullet list)
 - [x] T044 Verify NFR-011 security gates are executed in CI (`.github/workflows/ci.yml` runs `golangci-lint`, `govulncheck`, and `trivy`)
 - [x] T045 Verify NFR-013 build/release workflows are present (`.github/workflows/ci.yml`, `.github/workflows/image.yml`) and image publishing targets `ghcr.io/${{ github.repository }}`
-- [x] T046 Verify NFR-014 container operation examples exist and are documented (`compose.yml`, `README.md` docker run + compose/podman compose examples)
+- [x] T046 Verify NFR-014 container operation examples exist and are documented (`compose.yml` includes Prometheus service and scrape config per NFR-014, `README.md` docker run + compose/podman compose examples)
 - [x] T047 Verify NFR-015 container defaults are safe-by-default (`Dockerfile` runs as `nobody/nogroup` and exposes/listens on TCP/8080; README documents `-p 80:8080`)
 
 ---
