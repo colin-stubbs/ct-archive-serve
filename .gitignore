@@ -11,6 +11,9 @@
 # Test binary, built with `go test -c`
 *.test
 
+# Test log
+test.log
+
 # Code coverage profiles and other test artifacts
 *.out
 coverage.*
@@ -36,9 +39,18 @@ bin/
 
 # golangci-lint output
 lint.json
+lint.html
+
+# govulncheck output
+govulncheck.json
+
+# trivy output
+trivy-results.json
 
 # ignore additional qBittorrent content that is not required for a fresh start
 qbittorrent/
 # ignore all CT archive content... this would kill git if not ignored.
 archive/
 
+# don't include profile results
+*.prof

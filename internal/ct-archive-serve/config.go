@@ -76,7 +76,7 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 		HTTPReadHeaderTimeout:      5 * time.Second,
 		HTTPIdleTimeout:            60 * time.Second,
 		HTTPMaxHeaderBytes:         8192,
-		HTTPWriteTimeout:           0,
+		HTTPWriteTimeout:           60 * time.Second,
 		HTTPReadTimeout:            0,
 	}
 

@@ -45,7 +45,7 @@ func TestParseConfig_Defaults(t *testing.T) {
 	if got, want := cfg.HTTPMaxHeaderBytes, 8192; got != want {
 		t.Fatalf("HTTPMaxHeaderBytes = %d, want %d", got, want)
 	}
-	if got, want := cfg.HTTPWriteTimeout, time.Duration(0); got != want {
+	if got, want := cfg.HTTPWriteTimeout, 60*time.Second; got != want {
 		t.Fatalf("HTTPWriteTimeout = %v, want %v", got, want)
 	}
 	if got, want := cfg.HTTPReadTimeout, time.Duration(0); got != want {

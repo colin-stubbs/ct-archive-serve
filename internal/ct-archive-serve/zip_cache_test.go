@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -214,4 +215,113 @@ func TestZipPartCache_ConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestZipPartCache_SingleflightDeduplication(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	zipPath := filepath.Join(root, "dedup.zip")
+	mustCreateZip(t, zipPath, map[string][]byte{
+		"entry.txt": []byte("singleflight test"),
+	})
+
+	cache := NewZipPartCache(100, nil)
+
+	// Launch N goroutines that all hit the same uncached path simultaneously.
+	const numGoroutines = 50
+	var wg sync.WaitGroup
+	gate := make(chan struct{}) // start gate to maximise concurrency
+
+	entries := make([]*ZipPartCacheEntry, numGoroutines)
+	errs := make([]error, numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			<-gate // wait for all goroutines to be ready
+			entries[idx], errs[idx] = cache.Get(zipPath)
+		}(i)
+	}
+
+	// Release all goroutines at once.
+	close(gate)
+	wg.Wait()
+
+	// All should succeed.
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("goroutine %d: Get() error = %v", i, err)
+		}
+	}
+
+	// All should return the same cached entry instance (singleflight deduplication).
+	first := entries[0]
+	for i := 1; i < numGoroutines; i++ {
+		if entries[i] != first {
+			t.Errorf("goroutine %d returned different entry pointer than goroutine 0 (singleflight did not deduplicate)", i)
+		}
+	}
+
+	// Cache should contain exactly one entry.
+	cache.mu.Lock()
+	cacheLen := len(cache.entries)
+	cache.mu.Unlock()
+	if cacheLen != 1 {
+		t.Errorf("cache entries = %d, want 1", cacheLen)
+	}
+}
+
+func TestZipIntegrityCache_ThunderingHerd(t *testing.T) {
+	t.Parallel()
+
+	var verifyCalls atomic.Int64
+	slowVerify := func(string) error {
+		verifyCalls.Add(1)
+		// Simulate expensive verification.
+		time.Sleep(100 * time.Millisecond)
+		return nil
+	}
+
+	nowFn := func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
+	z := NewZipIntegrityCache(5*time.Minute, nowFn, slowVerify, nil)
+
+	const numGoroutines = 50
+	var wg sync.WaitGroup
+	gate := make(chan struct{})
+	errs := make([]error, numGoroutines)
+	path := "/tmp/thundering.zip"
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			<-gate
+			errs[idx] = z.Check(path)
+		}(i)
+	}
+
+	close(gate)
+	wg.Wait()
+
+	// All should succeed.
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("goroutine %d: Check() error = %v", i, err)
+		}
+	}
+
+	// The slow verify function should be called exactly once (singleflight deduplication).
+	if got := verifyCalls.Load(); got != 1 {
+		t.Errorf("verify called %d times, want 1 (singleflight should deduplicate)", got)
+	}
+
+	// The path should be in the passed cache.
+	z.mu.Lock()
+	_, ok := z.passed[path]
+	z.mu.Unlock()
+	if !ok {
+		t.Error("path should be in passed cache after successful verification")
+	}
 }

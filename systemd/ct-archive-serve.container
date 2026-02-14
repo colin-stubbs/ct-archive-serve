@@ -1,0 +1,39 @@
+# ct-archive-serve.container
+[Container]
+Image=ghcr.io/colin-stubbs/ct-archive-serve:latest
+
+# explicitly define hostname to avoid "systemd-ct-archive-serve" being used
+HostName=ct-archive-serve
+
+# if running podman as an unprivileged user it's likely best to ensure the container process runs as "0:0" aka "root:root", 
+# which will actually translate to the "UID:GID" of the user account *actually* running the container.
+#User="0:0"
+
+# auto-update the container from container registry, note that you need to enable podman-auto-update.service
+AutoUpdate=registry
+
+# adjust as required,
+Volume=/home/nobody/download:/var/log/ct/archive:ro
+
+# adjust as required,
+#Environment="TZ=Australia/Brisbane"
+
+# make ct-archive-serve HTTP service accessible via loopback only, using port 8080/tcp
+PublishPort=127.0.0.1:8080:8080/tcp
+# make ct-archive-serve webUI accesSpisible from anywhere, using port 80/tcp
+#PublishPort=80:8080/tcp
+
+# if you'd prefer to publish via traefik, do something like this:
+#Network=systemd-traefik
+#Label="traefik.enable=true"
+#Label="traefik.http.routers.ct_archive_serve.rule=Host(`ct.example.com`)"
+#Label="traefik.http.services.ct_archive_serve.loadbalancer.server.port=8080"
+
+[Service]
+# adjust as required
+Restart=always
+
+[Install]
+# start on boot, note that podman-restart.service must be enabled/started, 
+# and loginctl enable-linger %{USERNAME/UID}% should be run to enable persistent background services for the user account.
+WantedBy=default.target

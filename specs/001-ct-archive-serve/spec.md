@@ -97,11 +97,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
   - `GET /<log>/issuer/<fingerprint>` → `application/pkix-cert`
   - `GET /<log>/tile/<L>/<N>[.p/<W>]` → `application/octet-stream`
   - `GET /<log>/tile/data/<N>[.p/<W>]` → `application/octet-stream`
-  Additionally, when serving a file-like asset, `ct-archive-serve` MUST set `Content-Type` appropriately based on the asset being served, including:
-  - any `*.json` response as `application/json`
-  - any `/checkpoint` response as `text/plain; charset=utf-8`
-  - any tile response as `application/octet-stream`
-  - any issuer response as `application/pkix-cert`
+  File-like assets MUST use the `Content-Type` values given in the path list above for their endpoint.
 - **FR-002a**: HTTP method policy:
   - For all supported endpoints, `ct-archive-serve` MUST support `GET` and `HEAD`.
   - For `HEAD`, the server MUST behave as for `GET` but MUST NOT include a response body.
@@ -109,7 +105,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
   - For unknown/unsupported routes, the server MUST respond `404` regardless of method.
 - **FR-003**: `ct-archive-serve` MUST support serving multiple archived CT logs from subfolders under `CT_ARCHIVE_PATH` (default: `/var/log/ct/archive`) filtered by `CT_ARCHIVE_FOLDER_PATTERN` (default: `ct_*`).
   - Within each discovered archive folder, `ct-archive-serve` MUST consider zip parts named `NNN.zip` where `NNN` is a 3-digit decimal number (e.g., `000.zip`, `001.zip`, …). `000.zip` is required for `/logs.v3.json` generation per `FR-006`.
-- **FR-003a**: `ct-archive-serve` MUST derive the request `<log>` path segment from the discovered archive folder name by stripping a configured prefix. `CT_ARCHIVE_FOLDER_PATTERN` MUST be of the form `<prefix>*` (literal prefix followed by a single trailing `*`), and `ct-archive-serve` MUST strip exactly `<prefix>` from the folder name to produce `<log>`. If `CT_ARCHIVE_FOLDER_PATTERN` is not of the supported `<prefix>*` form, `ct-archive-serve` MUST fail startup with an invalid configuration error.
+- **FR-003a**: `ct-archive-serve` MUST derive the request `<log>` path segment from the discovered archive folder name by stripping a configured prefix. `CT_ARCHIVE_FOLDER_PATTERN` MUST be of the form `<prefix>*` (literal prefix followed by a single trailing `*`), and `ct-archive-serve` MUST strip exactly `<prefix>` from the folder name to produce `<log>`. The derived `<log>` value MUST be at most 256 characters; if the folder name after stripping the prefix exceeds 256 characters, the server MUST use the first 256 characters (truncation) for routing, metrics, and response URLs. If `CT_ARCHIVE_FOLDER_PATTERN` is not of the supported `<prefix>*` form, `ct-archive-serve` MUST fail startup with an invalid configuration error.
 - **FR-003b**: `<log>` collision handling: If two or more discovered archive folders map to the same `<log>` after applying the `CT_ARCHIVE_FOLDER_PATTERN` prefix strip (`FR-003a`), `ct-archive-serve` MUST fail startup with an invalid configuration error. The error message SHOULD include the colliding folder names to aid remediation.
 - **FR-004**: `ct-archive-serve` MUST use environment variables to configure all aspects of operation, with documented defaults. Environment variables configure runtime behavior; CLI flags are limited to help output and logging verbosity/debug only.
 - **FR-005**: `ct-archive-serve` MUST support `-h|--help|-d|--debug|-v|--verbose` CLI arguments to modify operation (help and logging).
@@ -138,6 +134,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
       - `tiled_logs` MUST be sorted deterministically by `<log>` in ascending ASCII lexicographic order (where `<log>` is derived from the archive folder name per `FR-003a`)
     - `log_list_timestamp` SHOULD be set to the time the current snapshot was generated/refreshed
   - **Validation requirement**: The generated `/logs.v3.json` output MUST be validated using the `loglist3` library from `github.com/google/certificate-transparency-go/loglist3` to ensure compatibility with CT log list v3 consumers. This validation MUST be performed in tests to verify that the JSON structure conforms to the expected schema and can be parsed by standard CT tooling.
+  - **Empty archive**: When no archive folders match `CT_ARCHIVE_FOLDER_PATTERN` under `CT_ARCHIVE_PATH`, or all matching folders yield no valid `000.zip`/`log.v3.json`, `GET /logs.v3.json` MUST return HTTP 200 with `Content-Type: application/json` and a valid log list v3 document with empty `tiled_logs[]`.
   - **Refresh failure behavior**:
     - If the most recent refresh attempt fails for any reason (e.g., because a `000.zip` is temporarily unreadable or `log.v3.json` parsing fails), `ct-archive-serve` MUST respond to `GET /logs.v3.json` with HTTP `503` (temporarily unavailable), and SHOULD log an error describing the refresh failure.
     - When responding `503`, the server SHOULD return `Content-Type: application/json` with a small error body (e.g., `{"error":"temporarily unavailable"}`) rather than a log list v3 document.
@@ -187,9 +184,10 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
     ]
   }
   ```
-- **FR-006b**: For each generated `tiled_logs[]` entry, `ct-archive-serve` MUST ensure the entry is valid for common log list v3 consumers: it MUST provide either `url` (RFC6962) OR (`submission_url` + `monitoring_url`) (static-ct-api), but MUST NOT provide both. For archives, the server MUST publish static-ct-api URLs and therefore MUST NOT include `url` in the generated `tiled_logs[]` entries.
-- **FR-006a**: For each generated `tiled_logs[]` entry, `ct-archive-serve` MUST set `has_issuers=true` if and only if the corresponding archive folder’s `000.zip` contains one or more entries under `issuer/` (determined from zip metadata; no full-zip decompression).
-- **FR-006c**: For each generated `tiled_logs[]` entry, `ct-archive-serve` MUST set the `state` field to indicate the log is retired. The `state` field MUST be set to `{"retired": {"timestamp": "<RFC3339 timestamp>"}}` where the timestamp is the UTC time when `ct-archive-serve` first discovered a valid `000.zip` file for that log. The discovery timestamp is tracked in-memory and preserved across archive index refreshes (but resets on server restart). If a log is discovered but `000.zip` is not yet available, the `state` field from the original `log.v3.json` is used until `000.zip` becomes available and the discovery timestamp is set.
+  - **Sub-requirements for `tiled_logs[]` entries** (these requirements apply to each entry generated per `FR-006`):
+    - **FR-006a**: For each generated `tiled_logs[]` entry, `ct-archive-serve` MUST set `has_issuers=true` if and only if the corresponding archive folder's `000.zip` contains one or more entries under `issuer/` (determined from zip metadata; no full-zip decompression).
+    - **FR-006b**: For each generated `tiled_logs[]` entry, `ct-archive-serve` MUST ensure the entry is valid for common log list v3 consumers: it MUST provide either `url` (RFC6962) OR (`submission_url` + `monitoring_url`) (static-ct-api), but MUST NOT provide both. For archives, the server MUST publish static-ct-api URLs and therefore MUST NOT include `url` in the generated `tiled_logs[]` entries.
+    - **FR-006c**: For each generated `tiled_logs[]` entry, `ct-archive-serve` MUST set the `state` field to indicate the log is retired. The `state` field MUST be set to `{"retired": {"timestamp": "<RFC3339 timestamp>"}}` where the timestamp is the UTC time when `ct-archive-serve` first discovered a valid `000.zip` file for that log. The discovery timestamp is tracked in-memory and preserved across archive index refreshes (but resets on server restart). If a log is discovered but `000.zip` is not yet available, the `state` field from the original `log.v3.json` is used until `000.zip` becomes available and the discovery timestamp is set.
 - **FR-007**: `ct-archive-serve` MUST provide environment variables to control `logs.v3.json` generation, including:
   - `CT_LOGLISTV3_JSON_REFRESH_INTERVAL` (default: `10m`) — optimized for large archive sets (100+ logs, 10TB+ data); operators with smaller sets may reduce this interval
 - **FR-008**: `ct-archive-serve` MUST map requested tile paths to the correct subtree zip part according to the `photocamera-archiver` subtree layout:
@@ -222,6 +220,13 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
     - `GET /<log>/tile/data/<N>[.p/<W>]` serves zip entry `tile/data/<N>[.p/<W>]`
 - **FR-009a**: For requests that require reading a specific zip part, if that zip part exists but fails basic zip integrity checks, `ct-archive-serve` MUST return `503` (temporarily unavailable) rather than `404` (see `FR-013`).
 - **FR-010**: `ct-archive-serve` SHOULD be compatible with Static-CT (C2SP/tiled) client implementations when configured with the server as their monitoring prefix.
+  - **Acceptance criteria**: A Static-CT client implementation (e.g., `filippo.io/sunlight` or `google/certificate-transparency-go`) configured to use `ct-archive-serve` as its monitoring prefix MUST be able to:
+    - Discover logs via `GET /logs.v3.json` and parse the response as valid log list v3 JSON
+    - Fetch checkpoints via `GET /<log>/checkpoint` and receive valid checkpoint data
+    - Fetch hash tiles via `GET /<log>/tile/<L>/<N>` and receive valid tile data
+    - Fetch data tiles via `GET /<log>/tile/data/<N>` and receive valid tile data
+    - Fetch issuers via `GET /<log>/issuer/<fingerprint>` when available and receive valid DER-encoded certificates
+  - **Test requirement**: Compatibility SHOULD be validated via integration tests using an independent Static-CT client library (per `NFR-012`), or via smoke tests that verify the server's responses match the expected Static-CT API contract (see `T036`).
 - **FR-011**: `ct-archive-serve` MUST provide environment variables to tune high-load performance (bounded resource usage), including:
   - `CT_ZIP_CACHE_MAX_OPEN` (default: `256`) — maximum number of simultaneously-open zip parts across all logs. Operators with very large working sets (requests spread across many zip files) may increase this value to improve cache hit rates, at the cost of higher memory usage and file descriptor consumption.
   - `CT_ARCHIVE_REFRESH_INTERVAL` (default: `5m`) — how frequently to refresh the on-disk archive folder/zip-part index (must not run on the request hot path). Optimized for large archive sets (100+ logs, 10TB+ data) to reduce unnecessary disk I/O; operators with frequently-changing archive sets may reduce this interval
@@ -257,7 +262,7 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
 - **NFR-002**: The server MUST limit responses to files within the archive set and MUST NOT expose the filesystem beyond the archive directory.
 - **NFR-003**: The server MUST open and read `.zip` parts in a seekable (random-access) manner so that serving a single zip entry does not require loading or decompressing the entire `.zip` file into memory; the server MAY read zip metadata (central directory) and MUST only decompress the requested entry data.
 - **NFR-004**: The implementation MUST use Go’s standard library `archive/zip` in a random-access mode (e.g., `zip.OpenReader` or `zip.NewReader` over an `io.ReaderAt`) so the server can locate a specific entry via the central directory and stream-decompress only that entry.
-- **NFR-005**: The server MUST support high concurrency safely. Shared caches and indices MUST be concurrency-safe and SHOULD minimize contention (e.g., sharding by log/zip part).
+- **NFR-005**: The server MUST support high concurrency safely. Shared caches and indices MUST be concurrency-safe and SHOULD minimize contention (e.g., sharding by log/zip part). Request-path design MUST NOT allow a single global lock to dominate under concurrency (see `SC-006` for performance validation).
 - **NFR-006**: The server MUST bound resource usage for its performance optimizations:
   - the number of open zip parts MUST be capped (`CT_ZIP_CACHE_MAX_OPEN`)
   - cached indices and open-file state MUST be evictable (e.g., LRU) to handle large working sets
@@ -268,11 +273,46 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
   - No hostname or transport validation (the server treats `Host`/`X-Forwarded-*` as opaque inputs for `/logs.v3.json` URL formation)
   - Production deployments MUST place `ct-archive-serve` behind a reverse proxy that enforces TLS and rate limiting and forwards `X-Forwarded-*` as required for `/logs.v3.json` URL formation.
   - When using a reverse proxy, deployments SHOULD set `CT_HTTP_TRUSTED_SOURCES` to the proxy’s source IPs/CIDRs so `X-Forwarded-*` is only honored from that boundary.
-- **NFR-009**: `ct-archive-serve` request/serving Prometheus metrics MUST be low-cardinality to avoid metric blowout:
-  - Request/serving metrics MUST be limited to (a) `/logs.v3.json` and (b) per-`<log>` aggregates for all `/<log>/...` serving combined
-  - Request/serving metrics MUST NOT be labeled by full request path, tile coordinates, endpoint name, or status code
+- **NFR-009**: `ct-archive-serve` MUST expose Prometheus metrics via `GET /metrics` with `Content-Type: text/plain; version=0.0.4; charset=utf-8`. All metrics MUST follow low-cardinality design principles to avoid metric blowout:
+  - **Metric naming convention**: All metrics MUST use the namespace `ct_archive_serve`. Request/serving metrics MUST use the subsystem `http` (format: `ct_archive_serve_http_{name}`). Resource observability metrics MUST NOT use a subsystem (format: `ct_archive_serve_{name}`).
+  - **Request/serving metrics** (low-cardinality requirement):
+    - Request/serving metrics MUST be limited to (a) `/logs.v3.json` aggregate and (b) per-`<log>` aggregates for all `/<log>/...` serving combined
+    - Request/serving metrics MUST NOT be labeled by full request path, tile coordinates, endpoint name, or status code
+    - The following request/serving metrics MUST be exposed:
+      - `ct_archive_serve_http_loglistv3_json_requests_total` (counter): Total number of `GET /logs.v3.json` requests. MUST be incremented on each request.
+      - `ct_archive_serve_http_loglistv3_json_request_duration_seconds` (histogram): Duration of `GET /logs.v3.json` requests in seconds. MUST use Prometheus default buckets. MUST be observed on each request completion.
+      - **Per-log metrics** (aggregated across all `/<log>/...` routes per `FR-002`):
+        - `ct_archive_serve_http_log_requests_total` (counter, labeled by `log`): Total number of requests under `/<log>/...` aggregated by log. MUST be incremented on each request at response time. The `log` label MUST be a valid discovered log from the archive index (per `FR-011`). All HTTP status codes (2xx, 3xx, 4xx, 5xx) MUST contribute to this metric.
+        - `ct_archive_serve_http_log_requests_successful_total` (counter, labeled by `log`): Total number of successful requests (HTTP 2xx) under `/<log>/...` aggregated by log. MUST be incremented at response time for each 2xx response. The `log` label MUST be a valid discovered log from the archive index.
+        - `ct_archive_serve_http_log_requests_failed_total` (counter, labeled by `log`): Total number of failed requests (HTTP 4xx) under `/<log>/...` aggregated by log. MUST be incremented at response time for each 4xx response. The `log` label MUST be a valid discovered log from the archive index.
+        - `ct_archive_serve_http_log_requests_errors_total` (counter, labeled by `log`): Total number of error requests (HTTP 5xx) under `/<log>/...` aggregated by log. MUST be incremented at response time for each 5xx response. The `log` label MUST be a valid discovered log from the archive index.
+        - `ct_archive_serve_http_log_request_duration_seconds` (histogram, labeled by `log`): Duration of requests under `/<log>/...` in seconds aggregated by log. MUST use Prometheus default buckets. MUST be observed at response time on each request completion. The `log` label MUST be a valid discovered log from the archive index. All HTTP status codes MUST contribute to this metric.
+      - **Nonexistent log metrics** (for requests to `/<log>/...` where `<log>` is not in the archive index):
+        - `ct_archive_serve_http_log_nonexistent_requests_total` (counter): Total number of requests under `/<log>/...` where the `<log>` path segment does not correspond to any discovered log in the archive index. MUST be incremented at response time for each such request. All HTTP status codes MUST contribute to this metric.
+        - `ct_archive_serve_http_log_nonexistent_requests_successful_total` (counter): Total number of successful requests (HTTP 2xx) for nonexistent logs. MUST be incremented at response time for each 2xx response to a nonexistent log.
+        - `ct_archive_serve_http_log_nonexistent_requests_failed_total` (counter): Total number of failed requests (HTTP 4xx) for nonexistent logs. MUST be incremented at response time for each 4xx response to a nonexistent log.
+        - `ct_archive_serve_http_log_nonexistent_requests_errors_total` (counter): Total number of error requests (HTTP 5xx) for nonexistent logs. MUST be incremented at response time for each 5xx response to a nonexistent log.
+        - `ct_archive_serve_http_log_nonexistent_request_duration_seconds` (histogram): Duration of requests for nonexistent logs in seconds. MUST use Prometheus default buckets. MUST be observed at response time on each request completion. All HTTP status codes MUST contribute to this metric.
+  - **Resource observability metrics** (gauges and counters for operational visibility):
+    - The following resource observability metrics MUST be exposed:
+      - `ct_archive_serve_archive_logs_discovered` (gauge): Number of archive logs currently discovered by the archive index. MUST be updated whenever the archive index refresh completes (per `FR-011`).
+      - `ct_archive_serve_archive_zip_parts_discovered` (gauge): Number of zip parts currently discovered across all logs by the archive index. MUST be updated whenever the archive index refresh completes (per `FR-011`).
+      - `ct_archive_serve_zip_cache_open` (gauge): Current number of open zip parts held by the zip cache. MUST be updated whenever a zip part is opened or closed/evicted from the cache (per `NFR-006`).
+      - `ct_archive_serve_zip_cache_evictions_total` (counter): Total number of zip cache evictions. MUST be incremented whenever a zip part is evicted from the cache due to the `CT_ZIP_CACHE_MAX_OPEN` limit (per `FR-011`, `NFR-006`).
+      - `ct_archive_serve_zip_integrity_passed_total` (counter): Total number of zip parts that passed structural integrity checks (per `FR-013`). MUST be incremented when a zip part successfully passes integrity verification.
+      - `ct_archive_serve_zip_integrity_failed_total` (counter): Total number of zip parts that failed structural integrity checks (per `FR-013`). MUST be incremented when a zip part fails integrity verification.
+  - **Metric types**: Metrics MUST use appropriate Prometheus metric types:
+    - **Counters** for cumulative totals (request counts, evictions, integrity check results)
+    - **Histograms** for request durations (with Prometheus default buckets)
+    - **Gauges** for current state values (discovered counts, cache size)
+  - **Standard metrics**: `ct-archive-serve` MAY also expose standard Go runtime metrics (via `prometheus/client_golang` default collectors) and process metrics, but these are not part of the application-specific metric specification.
+  - **Implementation note**: The expanded per-log metrics (successful/failed/errors counters for valid and nonexistent logs, as specified in lines 287-298) MUST be implemented to match this specification. The implementation SHOULD be verified against these requirements to ensure all specified metrics are exposed and updated at response time as required.
 - **NFR-010**: Logs MUST be structured (JSON) and suitable for production operations behind a reverse proxy:
-  - The server MUST log errors with clear context (including request path and derived `<log>` when applicable) without leaking secrets
+  - The server MUST log errors with clear context (including request path and derived `<log>` when applicable) without leaking secrets. **Examples of required context fields for error logs**:
+    - For HTTP request errors: `method`, `path`, `status`, `duration_ms`, `log` (when applicable), `x_forwarded_host` and `x_forwarded_proto` (when present)
+    - For zip entry serving errors: `log`, `error`, and endpoint-specific fields (e.g., `level` and `index` for tile requests, `fingerprint` for issuer requests)
+    - For archive discovery/refresh errors: `error` with a descriptive message indicating the operation that failed
+    - All error logs MUST include the underlying error message (via `error` field) without exposing sensitive data such as file system paths outside the archive directory or cryptographic material
   - Verbosity MUST be controllable via `-v/--verbose` and `-d/--debug`
   - Logging MUST be written to process stdout/stderr (for container/daemon operation):
     - INFO/WARN/DEBUG logs SHOULD go to stdout; ERROR and higher SHOULD go to stderr
@@ -299,12 +339,16 @@ A user has a directory containing multiple archived logs under `CT_ARCHIVE_PATH`
 - **NFR-014**: The repository MUST provide container operation examples:
   - A repo-root `compose.yml` MUST be provided as an example for running `ct-archive-serve` via `docker compose` or `podman compose`.
   - `compose.yml` SHOULD include a Prometheus service configured to automatically discover and collect metrics from `ct-archive-serve` via the `/metrics` endpoint, with a corresponding `prometheus/prometheus.yml` configuration file.
+    - The `prometheus/prometheus.yml` configuration MUST include at minimum a scrape configuration that targets `ct-archive-serve`'s `/metrics` endpoint (typically `http://ct-archive-serve:8080/metrics` when using Docker Compose service networking).
+    - The scrape configuration SHOULD use a reasonable scrape interval (e.g., `15s` or `30s`) and explicit timeout values (e.g., `scrape_timeout: 10s`, which is the Prometheus default).
   - The repository MAY provide additional compose files (e.g., `compose-all.yml`) that include additional services (e.g., qBittorrent for downloading CT archives) alongside `ct-archive-serve` and Prometheus.
   - `README.md` MUST explain how to operate `ct-archive-serve` using containers (including `docker run` and compose-based examples).
 - **NFR-015**: The container image defaults MUST be safe-by-default:
   - The container image MUST run as `nobody/nogroup` (non-root).
   - The container image MUST listen on TCP/8080 by default.
   - Operators MAY publish host TCP/80 to container TCP/8080 (e.g. `-p 80:8080`).
+
+**Requirements consistency**: The requirements in this specification have been reviewed for conflicts; none have been identified. In case of any future conflict, the project constitution (`.specify/memory/constitution.md`) takes precedence, followed by this specification.
 
 ### Key Entities *(include if feature involves data)*
 
