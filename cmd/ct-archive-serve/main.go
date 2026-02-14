@@ -67,7 +67,7 @@ func main() {
 		_, _ = fmt.Fprintf(os.Stdout, "    Maximum size of request headers in bytes (default: 8192)\n")
 		_, _ = fmt.Fprintf(os.Stdout, "    Must be > 0\n\n")
 		_, _ = fmt.Fprintf(os.Stdout, "  CT_HTTP_WRITE_TIMEOUT\n")
-		_, _ = fmt.Fprintf(os.Stdout, "    Maximum time to write response (default: 0, disabled)\n")
+		_, _ = fmt.Fprintf(os.Stdout, "    Maximum time to write response (default: 60s)\n")
 		_, _ = fmt.Fprintf(os.Stdout, "    Format: Go duration (e.g., 30s, 1m, 0 to disable)\n\n")
 		_, _ = fmt.Fprintf(os.Stdout, "  CT_HTTP_READ_TIMEOUT\n")
 		_, _ = fmt.Fprintf(os.Stdout, "    Maximum time to read request body (default: 0, disabled)\n")

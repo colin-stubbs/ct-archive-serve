@@ -271,7 +271,7 @@ cmd/ct-archive-serve/        # CLI entrypoint
 internal/ct-archive-serve/   # Core implementation
 ```
 
-**Go Version**: Target runtime **Go 1.25.5+**
+**Go Version**: Target runtime **Go 1.25.6+**
 
 ### Local Tooling
 
@@ -330,7 +330,8 @@ Safe HTTP server defaults prevent resource exhaustion:
 - `CT_HTTP_READ_HEADER_TIMEOUT` (default: `5s`): Prevents slow clients from holding connections
 - `CT_HTTP_IDLE_TIMEOUT` (default: `60s`): Closes idle connections
 - `CT_HTTP_MAX_HEADER_BYTES` (default: `8192`): Limits request header size
-- `CT_HTTP_READ_TIMEOUT` / `CT_HTTP_WRITE_TIMEOUT` (default: `0`, disabled): Additional protection
+- `CT_HTTP_WRITE_TIMEOUT` (default: `60s`): Prevents goroutine accumulation from slow or disconnected clients
+- `CT_HTTP_READ_TIMEOUT` (default: `0`, disabled): Additional protection for request body reads
 
 ### Trusted Source Validation
 

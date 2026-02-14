@@ -69,7 +69,7 @@ Rationale: The system sits on the network boundary and processes untrusted data 
 
 ## Constraints & Standards
 
-- **Supported runtime**: Go 1.25.5+ (align with tooling and CI).
+- **Supported runtime**: Go 1.25.6+ (align with tooling and CI).
 - **External calls**: If the service makes outbound network calls, every request MUST have a timeout; retries (if used) MUST use exponential backoff and jitter.
 - **Configuration**: Environment variables are the primary configuration mechanism; flags are reserved for UX/help
   and non-secret toggles unless explicitly documented otherwise.

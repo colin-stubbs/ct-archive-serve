@@ -1,3 +1,18 @@
+* 2026-01-30 - Fix critical performance bugs causing memory explosion and thread starvation
+
+- Fixed ZipPartCache holding global mutex during disk I/O by using singleflight for concurrent zip opens
+- Fixed ZipIntegrityCache thundering herd by using singleflight for concurrent integrity verifications
+- Removed redundant os.Open file descriptor leak in ZipPartCacheEntry (was holding 2 fds per cached zip)
+- Changed default CT_HTTP_WRITE_TIMEOUT from 0 (disabled) to 60s to prevent goroutine accumulation
+- Added golang.org/x/sync dependency for singleflight
+- Added TestZipPartCache_SingleflightDeduplication test verifying concurrent cache misses are deduplicated
+- Added TestZipIntegrityCache_ThunderingHerd test verifying concurrent verifications are deduplicated
+
+* 2026-01-30 - Spec analysis fixes: Go version 1.25.6+, plan dependencies
+
+- Decided documented Go runtime as **Go 1.25.6+** (constitution, plan, README) for consistency (I1)
+- Added `github.com/google/certificate-transparency-go/loglist3` to plan "Primary Dependencies" for FR-006 validation traceability (U1)
+
 * 2026-01-21 - Add Prometheus configuration for metrics collection
 
 - Created `prometheus/prometheus.yml` configuration file that automatically discovers and scrapes metrics from ct-archive-serve

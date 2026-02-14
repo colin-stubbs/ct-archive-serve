@@ -4,9 +4,10 @@ import (
 	"archive/zip"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // ErrZipTemporarilyUnavailable indicates a zip part exists but is not currently usable
@@ -28,6 +29,8 @@ type ZipIntegrityCache struct {
 	mu     sync.Mutex
 	passed map[string]struct{}
 	failed map[string]time.Time // path -> expiresAt
+
+	group singleflight.Group // deduplicates concurrent verifications of the same path
 }
 
 func NewZipIntegrityCache(
@@ -77,8 +80,20 @@ func (z *ZipIntegrityCache) Check(path string) error {
 	}
 	z.mu.Unlock()
 
-	// Slow path: verify.
-	if err := z.verify(path); err != nil {
+	// Slow path: verify via singleflight to prevent thundering herd.
+	_, err, _ := z.group.Do(path, func() (interface{}, error) {
+		// Re-check cache inside singleflight (another goroutine may have completed).
+		z.mu.Lock()
+		if _, ok := z.passed[path]; ok {
+			z.mu.Unlock()
+			return nil, nil
+		}
+		z.mu.Unlock()
+
+		return nil, z.verify(path)
+	})
+
+	if err != nil {
 		z.mu.Lock()
 		z.failed[path] = z.now().Add(z.failTTL)
 		z.mu.Unlock()
@@ -140,13 +155,12 @@ func (idx *ZipEntryIndex) Lookup(entryName string) *zip.File {
 	return idx.entries[entryName]
 }
 
-// ZipPartCacheEntry represents a cached zip part with its open file handle and entry index.
+// ZipPartCacheEntry represents a cached zip part with its open reader and entry index.
 type ZipPartCacheEntry struct {
-	path      string
-	file      *os.File
-	reader    *zip.ReadCloser
-	index     *ZipEntryIndex
-	lastUsed  time.Time
+	path     string
+	reader   *zip.ReadCloser
+	index    *ZipEntryIndex
+	lastUsed time.Time
 }
 
 // ZipPartCache is a bounded LRU cache for open zip file handles and entry indices.
@@ -154,13 +168,15 @@ type ZipPartCacheEntry struct {
 // This cache avoids repeated central-directory parsing for hot zip parts.
 // When the cache exceeds maxOpen, LRU entries are evicted.
 type ZipPartCache struct {
-	maxOpen  int
-	metrics  *Metrics
-	now      func() time.Time
+	maxOpen int
+	metrics *Metrics
+	now     func() time.Time
 
 	mu      sync.Mutex
 	entries map[string]*ZipPartCacheEntry // path -> entry
-	order   []string                       // LRU order (oldest first)
+	order   []string                      // LRU order (oldest first)
+
+	group singleflight.Group // deduplicates concurrent opens of the same path
 }
 
 // NewZipPartCache constructs a new ZipPartCache.
@@ -179,63 +195,95 @@ func NewZipPartCache(maxOpen int, metrics *Metrics) *ZipPartCache {
 
 // Get returns a cached zip part entry, or opens and caches it if not present.
 // Returns the entry and nil error if found/cached, or nil and error on failure.
+//
+// The global mutex is only held for fast in-memory cache lookups and insertions.
+// All disk I/O (zip.OpenReader, central directory parsing) is performed outside
+// the mutex and deduplicated via singleflight so that concurrent requests for
+// the same uncached zip path only perform the I/O once.
 func (c *ZipPartCache) Get(path string) (*ZipPartCacheEntry, error) {
 	if c == nil {
 		return nil, errors.New("zip part cache not initialized")
 	}
 
+	// Fast path: check cache under lock.
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Check cache
 	if entry, ok := c.entries[path]; ok {
-		// Update LRU order (move to end)
 		c.updateLRUOrder(path)
 		entry.lastUsed = c.now()
+		c.mu.Unlock()
 		return entry, nil
 	}
+	c.mu.Unlock()
 
-	// Cache miss: open and index the zip
-	//nolint:gosec // G304: path is validated internally from archive index, not user input
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open zip file: %w", err)
-	}
+	// Slow path: open and index the zip via singleflight (no global lock held).
+	val, err, _ := c.group.Do(path, func() (interface{}, error) {
+		// Re-check cache inside singleflight (another goroutine may have completed).
+		c.mu.Lock()
+		if entry, ok := c.entries[path]; ok {
+			c.updateLRUOrder(path)
+			entry.lastUsed = c.now()
+			c.mu.Unlock()
+			return entry, nil
+		}
+		c.mu.Unlock()
 
-	reader, err := zip.OpenReader(path)
-	if err != nil {
-		_ = file.Close()
-		return nil, fmt.Errorf("open zip reader: %w", err)
-	}
+		// Perform all disk I/O outside the mutex.
+		//nolint:gosec // G304: path is validated internally from archive index, not user input
+		reader, err := zip.OpenReader(path)
+		if err != nil {
+			return nil, fmt.Errorf("open zip reader: %w", err)
+		}
 
-	// Build entry index
-	index := &ZipEntryIndex{
-		entries: make(map[string]*zip.File, len(reader.File)),
-	}
-	for _, f := range reader.File {
-		index.entries[f.Name] = f
-	}
+		// Build entry index.
+		index := &ZipEntryIndex{
+			entries: make(map[string]*zip.File, len(reader.File)),
+		}
+		for _, f := range reader.File {
+			index.entries[f.Name] = f
+		}
 
-	entry := &ZipPartCacheEntry{
-		path:     path,
-		file:     file,
+		entry := &ZipPartCacheEntry{
+			path:     path,
 			reader:   reader,
-		index:    index,
-		lastUsed: c.now(),
+			index:    index,
+			lastUsed: c.now(),
+		}
+
+		// Insert into cache under lock.
+		c.mu.Lock()
+		// Double-check: another caller may have inserted while we were opening.
+		if existing, ok := c.entries[path]; ok {
+			c.updateLRUOrder(path)
+			existing.lastUsed = c.now()
+			c.mu.Unlock()
+			// Close the reader we just opened; the cached one wins.
+			_ = reader.Close()
+			return existing, nil
+		}
+
+		// Evict LRU if at capacity.
+		if len(c.entries) >= c.maxOpen {
+			c.evictLRU()
+		}
+
+		c.entries[path] = entry
+		c.order = append(c.order, path)
+
+		if c.metrics != nil {
+			c.metrics.SetZipCacheOpen(len(c.entries))
+		}
+		c.mu.Unlock()
+
+		return entry, nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
-	// Evict LRU if at capacity
-	if len(c.entries) >= c.maxOpen {
-		c.evictLRU()
-	}
-
-	// Add to cache
-	c.entries[path] = entry
-	c.order = append(c.order, path)
-
-	// Update metrics
-	if c.metrics != nil {
-		c.metrics.SetZipCacheOpen(len(c.entries))
+	entry, ok := val.(*ZipPartCacheEntry)
+	if !ok {
+		return nil, errors.New("zip part cache: unexpected singleflight result type")
 	}
 
 	return entry, nil
@@ -270,7 +318,6 @@ func (c *ZipPartCache) evictLRU() {
 
 	// Close resources
 	_ = entry.reader.Close()
-	_ = entry.file.Close()
 
 	delete(c.entries, oldestPath)
 
@@ -305,7 +352,6 @@ func (c *ZipPartCache) Remove(path string) {
 
 	// Close resources
 	_ = entry.reader.Close()
-	_ = entry.file.Close()
 
 	delete(c.entries, path)
 
