@@ -97,7 +97,7 @@ func TestZipPartCache_GetAndCache(t *testing.T) {
 		"test.txt": []byte("test content"),
 	})
 
-	cache := NewZipPartCache(10, nil)
+	cache := NewZipPartCache(10, nil, 0)
 
 	// First get: cache miss, should open and cache
 	entry1, err := cache.Get(zipPath)
@@ -125,7 +125,7 @@ func TestZipPartCache_LRUEviction(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	cache := NewZipPartCache(2, nil) // Small cache for testing
+	cache := NewZipPartCache(2, nil, 0) // Small cache for testing
 
 	// Create 3 zip files
 	zip1 := filepath.Join(root, "000.zip")
@@ -173,7 +173,7 @@ func TestZipPartCache_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	cache := NewZipPartCache(100, nil)
+	cache := NewZipPartCache(100, nil, 0)
 
 	// Create multiple zip files
 	zipFiles := make([]string, 10)
@@ -226,7 +226,7 @@ func TestZipPartCache_SingleflightDeduplication(t *testing.T) {
 		"entry.txt": []byte("singleflight test"),
 	})
 
-	cache := NewZipPartCache(100, nil)
+	cache := NewZipPartCache(100, nil, 0)
 
 	// Launch N goroutines that all hit the same uncached path simultaneously.
 	const numGoroutines = 50

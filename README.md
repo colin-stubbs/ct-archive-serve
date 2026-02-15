@@ -139,7 +139,9 @@ All configuration is via environment variables. See `internal/ct-archive-serve/R
 - `CT_LOGLISTV3_JSON_REFRESH_INTERVAL`: Refresh interval for logs.v3.json (default: `10m`)
 - `CT_ARCHIVE_REFRESH_INTERVAL`: Archive index refresh interval (default: `5m`)
 - `CT_ZIP_CACHE_MAX_OPEN`: Maximum open zip parts (default: `256`)
+- `CT_ZIP_CACHE_MAX_CONCURRENT_OPENS`: Maximum concurrent zip.OpenReader calls (default: `8`). Limits I/O storms during cold starts.
 - `CT_ZIP_INTEGRITY_FAIL_TTL`: TTL for failed zip integrity checks (default: `5m`)
+- `CT_ENTRY_CACHE_MAX_BYTES`: Maximum bytes of decompressed entry content to cache in memory (default: `268435456`, 256MiB). Set to `0` to disable. Higher values reduce decompression overhead for frequently accessed tiles.
 - `CT_HTTP_*`: HTTP server timeouts and limits (see security section)
 
 ### CLI Flags
@@ -169,6 +171,7 @@ All endpoints support both `GET` and `HEAD` methods. Other methods return `405 M
   - Checkpoint: `text/plain; charset=utf-8`
   - Tiles: `application/octet-stream`
   - Issuers: `application/pkix-cert`
+- **Caching**: All archive content responses include `Cache-Control: public, max-age=31536000, immutable` since archive tiles, issuers, and checkpoints are content-addressed and never change.
 - **Error Responses**:
   - `404 Not Found`: Invalid path, missing entry, or traversal attempt
   - `503 Service Unavailable`: Zip part temporarily unavailable (integrity check failed) or logs.v3.json refresh failed

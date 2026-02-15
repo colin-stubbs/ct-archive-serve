@@ -45,7 +45,7 @@ func BenchmarkZipReader_OpenEntry(b *testing.B) {
 // to verify that cache eviction and lookup remain efficient.
 func BenchmarkZipPartCache_Get(b *testing.B) {
 	root := b.TempDir()
-	cache := NewZipPartCache(100, nil)
+	cache := NewZipPartCache(100, nil, 0)
 
 	// Create many zip files to simulate large working set
 	zipFiles := make([]string, 200)
