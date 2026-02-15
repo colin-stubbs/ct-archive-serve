@@ -21,8 +21,10 @@ type Config struct {
 	LogListV3JSONRefreshInterval time.Duration
 	ArchiveRefreshInterval     time.Duration
 
-	ZipCacheMaxOpen     int
-	ZipIntegrityFailTTL time.Duration
+	ZipCacheMaxOpen            int
+	ZipCacheMaxConcurrentOpens int
+	ZipIntegrityFailTTL        time.Duration
+	EntryContentCacheMaxBytes  int64
 
 	HTTPReadHeaderTimeout time.Duration
 	HTTPIdleTimeout       time.Duration
@@ -72,7 +74,9 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 		LogListV3JSONRefreshInterval: 10 * time.Minute,
 		ArchiveRefreshInterval:     5 * time.Minute,
 		ZipCacheMaxOpen:            256,
+		ZipCacheMaxConcurrentOpens: 8,
 		ZipIntegrityFailTTL:        5 * time.Minute,
+		EntryContentCacheMaxBytes:  256 * 1024 * 1024, // 256 MiB default
 		HTTPReadHeaderTimeout:      5 * time.Second,
 		HTTPIdleTimeout:            60 * time.Second,
 		HTTPMaxHeaderBytes:         8192,
@@ -128,6 +132,28 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 			return Config{}, errors.New("CT_ZIP_CACHE_MAX_OPEN: must be > 0")
 		}
 		cfg.ZipCacheMaxOpen = n
+	}
+
+	if v, ok := lookup("CT_ZIP_CACHE_MAX_CONCURRENT_OPENS"); ok && v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return Config{}, fmt.Errorf("CT_ZIP_CACHE_MAX_CONCURRENT_OPENS: %w", err)
+		}
+		if n <= 0 {
+			return Config{}, errors.New("CT_ZIP_CACHE_MAX_CONCURRENT_OPENS: must be > 0")
+		}
+		cfg.ZipCacheMaxConcurrentOpens = n
+	}
+
+	if v, ok := lookup("CT_ENTRY_CACHE_MAX_BYTES"); ok && v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return Config{}, fmt.Errorf("CT_ENTRY_CACHE_MAX_BYTES: %w", err)
+		}
+		if n < 0 {
+			return Config{}, errors.New("CT_ENTRY_CACHE_MAX_BYTES: must be >= 0 (0 disables)")
+		}
+		cfg.EntryContentCacheMaxBytes = n
 	}
 
 	if v, ok := lookup("CT_ZIP_INTEGRITY_FAIL_TTL"); ok && v != "" {

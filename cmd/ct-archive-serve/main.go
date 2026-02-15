@@ -52,10 +52,18 @@ func main() {
 		_, _ = fmt.Fprintf(os.Stdout, "  CT_ZIP_CACHE_MAX_OPEN\n")
 		_, _ = fmt.Fprintf(os.Stdout, "    Maximum number of open zip parts to cache (default: 256)\n")
 		_, _ = fmt.Fprintf(os.Stdout, "    Higher values improve performance for hot zip parts but increase memory usage\n\n")
+		_, _ = fmt.Fprintf(os.Stdout, "  CT_ZIP_CACHE_MAX_CONCURRENT_OPENS\n")
+		_, _ = fmt.Fprintf(os.Stdout, "    Maximum concurrent zip.OpenReader calls (default: 8)\n")
+		_, _ = fmt.Fprintf(os.Stdout, "    Limits I/O storms during cold starts when many zip parts are opened simultaneously\n")
+		_, _ = fmt.Fprintf(os.Stdout, "    Must be > 0\n\n")
 		_, _ = fmt.Fprintf(os.Stdout, "  CT_ZIP_INTEGRITY_FAIL_TTL\n")
 		_, _ = fmt.Fprintf(os.Stdout, "    TTL for failed zip integrity checks (default: 5m)\n")
 		_, _ = fmt.Fprintf(os.Stdout, "    Failed zip parts are re-tested after this interval\n")
 		_, _ = fmt.Fprintf(os.Stdout, "    Format: Go duration (e.g., 5m, 1m, 10m)\n\n")
+		_, _ = fmt.Fprintf(os.Stdout, "  CT_ENTRY_CACHE_MAX_BYTES\n")
+		_, _ = fmt.Fprintf(os.Stdout, "    Maximum bytes of decompressed entry content to cache in memory (default: 268435456, 256MiB)\n")
+		_, _ = fmt.Fprintf(os.Stdout, "    Set to 0 to disable entry content caching\n")
+		_, _ = fmt.Fprintf(os.Stdout, "    Higher values reduce decompression overhead for frequently accessed tiles\n\n")
 		_, _ = fmt.Fprintf(os.Stdout, "HTTP Server Configuration:\n")
 		_, _ = fmt.Fprintf(os.Stdout, "  CT_HTTP_READ_HEADER_TIMEOUT\n")
 		_, _ = fmt.Fprintf(os.Stdout, "    Maximum time to read request headers (default: 5s)\n")
@@ -127,13 +135,25 @@ func main() {
 	)
 
 	// Initialize zip part cache (Phase 5 performance optimization)
-	logger.Debug("Initializing zip part cache", "max_open", cfg.ZipCacheMaxOpen)
-	zipPartCache := ctarchiveserve.NewZipPartCache(cfg.ZipCacheMaxOpen, metrics)
+	logger.Debug("Initializing zip part cache", "max_open", cfg.ZipCacheMaxOpen, "max_concurrent_opens", cfg.ZipCacheMaxConcurrentOpens)
+	zipPartCache := ctarchiveserve.NewZipPartCache(cfg.ZipCacheMaxOpen, metrics, cfg.ZipCacheMaxConcurrentOpens)
+
+	// Initialize entry content cache (decompressed tile data cache)
+	var entryCache *ctarchiveserve.EntryContentCache
+	if cfg.EntryContentCacheMaxBytes > 0 {
+		logger.Debug("Initializing entry content cache", "max_bytes", cfg.EntryContentCacheMaxBytes)
+		entryCache = ctarchiveserve.NewEntryContentCache(cfg.EntryContentCacheMaxBytes, metrics)
+	} else {
+		logger.Debug("Entry content cache disabled (CT_ENTRY_CACHE_MAX_BYTES=0)")
+	}
 
 	// Initialize zip reader
 	logger.Debug("Initializing zip reader")
 	zipReader := ctarchiveserve.NewZipReader(zipIntegrityCache)
 	zipReader.SetZipPartCache(zipPartCache)
+	if entryCache != nil {
+		zipReader.SetEntryContentCache(entryCache)
+	}
 
 	// Initialize logs.v3.json builder
 	logger.Debug("Initializing logs.v3.json builder")

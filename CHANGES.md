@@ -1,3 +1,19 @@
+* 2026-01-30 - Comprehensive performance overhaul for zip file serving
+
+- Reordered ZipReader.OpenEntry to try entry content cache first, then zip part cache (skip os.Stat and integrity check on cache hits)
+- Replaced O(n) slice-based LRU in ZipPartCache with container/list.List for O(1) update/evict/remove operations
+- Switched ZipIntegrityCache.mu from sync.Mutex to sync.RWMutex with RLock on the read-heavy fast path
+- Created EntryContentCache: memory-budgeted LRU cache for decompressed zip entry content (eliminates repeated decompression)
+- Added CT_ENTRY_CACHE_MAX_BYTES environment variable (default: 256MiB, set to 0 to disable)
+- Reduced verifyZipStructural to central-directory-only validation (removed O(N) per-entry Open loop that caused 65K+ I/O operations per zip)
+- Added sync.Pool for io.CopyBuffer to eliminate 32KB heap allocation per response on the hot path
+- Replaced linear scan in SelectZipPart with sort.SearchInts binary search (O(log n) vs O(n))
+- Added semaphore (golang.org/x/sync/semaphore) to limit concurrent zip.OpenReader calls and prevent I/O storms
+- Added CT_ZIP_CACHE_MAX_CONCURRENT_OPENS environment variable (default: 8)
+- Added HTTP Cache-Control headers (public, max-age=31536000, immutable) for all archive content responses
+- Added Prometheus metrics for entry content cache: hits, misses, evictions, bytes, items
+- Updated help text and README.md with new environment variables
+
 * 2026-01-30 - Fix critical performance bugs causing memory explosion and thread starvation
 
 - Fixed ZipPartCache holding global mutex during disk I/O by using singleflight for concurrent zip opens

@@ -27,6 +27,12 @@ type Metrics struct {
 	zipCacheEvictions  prometheus.Counter
 	zipIntegrityPassed prometheus.Counter
 	zipIntegrityFailed prometheus.Counter
+
+	entryCacheHits      prometheus.Counter
+	entryCacheMisses    prometheus.Counter
+	entryCacheEvictions prometheus.Counter
+	entryCacheBytes     prometheus.Gauge
+	entryCacheItems     prometheus.Gauge
 }
 
 // NewMetrics constructs and registers the service's metrics.
@@ -94,6 +100,32 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name:      "zip_integrity_failed_total",
 			Help:      "Total number of zip parts that failed structural integrity checks.",
 		}),
+
+		entryCacheHits: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "ct_archive_serve",
+			Name:      "entry_cache_hits_total",
+			Help:      "Total number of entry content cache hits.",
+		}),
+		entryCacheMisses: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "ct_archive_serve",
+			Name:      "entry_cache_misses_total",
+			Help:      "Total number of entry content cache misses.",
+		}),
+		entryCacheEvictions: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "ct_archive_serve",
+			Name:      "entry_cache_evictions_total",
+			Help:      "Total number of entry content cache evictions.",
+		}),
+		entryCacheBytes: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "ct_archive_serve",
+			Name:      "entry_cache_bytes",
+			Help:      "Current bytes of decompressed content in the entry cache.",
+		}),
+		entryCacheItems: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "ct_archive_serve",
+			Name:      "entry_cache_items",
+			Help:      "Current number of items in the entry content cache.",
+		}),
 	}
 
 	reg.MustRegister(
@@ -107,6 +139,11 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		m.zipCacheEvictions,
 		m.zipIntegrityPassed,
 		m.zipIntegrityFailed,
+		m.entryCacheHits,
+		m.entryCacheMisses,
+		m.entryCacheEvictions,
+		m.entryCacheBytes,
+		m.entryCacheItems,
 	)
 
 	return m
@@ -164,3 +201,39 @@ func (m *Metrics) IncZipIntegrityFailed() {
 	m.zipIntegrityFailed.Inc()
 }
 
+// Entry content cache metrics.
+
+func (m *Metrics) IncEntryCacheHits() {
+	if m == nil {
+		return
+	}
+	m.entryCacheHits.Inc()
+}
+
+func (m *Metrics) IncEntryCacheMisses() {
+	if m == nil {
+		return
+	}
+	m.entryCacheMisses.Inc()
+}
+
+func (m *Metrics) IncEntryCacheEvictions() {
+	if m == nil {
+		return
+	}
+	m.entryCacheEvictions.Inc()
+}
+
+func (m *Metrics) SetEntryCacheBytes(n int64) {
+	if m == nil {
+		return
+	}
+	m.entryCacheBytes.Set(float64(n))
+}
+
+func (m *Metrics) SetEntryCacheItems(n int) {
+	if m == nil {
+		return
+	}
+	m.entryCacheItems.Set(float64(n))
+}

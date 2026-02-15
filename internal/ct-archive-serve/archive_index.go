@@ -173,22 +173,20 @@ func (ai *ArchiveIndex) SelectZipPart(log string, tileLevel uint8, tileIndex uin
 			if len(archiveLog.ZipParts) == 0 {
 				return 0, false
 			}
-			// Check if 000.zip exists
-			for _, zp := range archiveLog.ZipParts {
-				if zp == 0 {
-					return 0, true
-				}
+			// Binary search for 000.zip in sorted ZipParts.
+			idx := sort.SearchInts(archiveLog.ZipParts, 0)
+			if idx < len(archiveLog.ZipParts) && archiveLog.ZipParts[idx] == 0 {
+				return 0, true
 			}
-			// Return lowest available zip
+			// Return lowest available zip (first element, since sorted ascending).
 			return archiveLog.ZipParts[0], true
 		}
 	}
 
-	// Check if the calculated zip index exists
-	for _, zp := range archiveLog.ZipParts {
-		if zp == zipIndex {
-			return zipIndex, true
-		}
+	// Binary search for the calculated zip index in sorted ZipParts -- O(log n).
+	idx := sort.SearchInts(archiveLog.ZipParts, zipIndex)
+	if idx < len(archiveLog.ZipParts) && archiveLog.ZipParts[idx] == zipIndex {
+		return zipIndex, true
 	}
 
 	return 0, false

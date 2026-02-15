@@ -10,10 +10,24 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+// copyBufPool is a sync.Pool for reusable 32KB buffers used with io.CopyBuffer.
+// This eliminates a 32KB heap allocation per io.Copy call on the hot response path.
+var copyBufPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 32*1024) // 32KB, same as io.Copy default
+		return &buf
+	},
+}
+
+// immutableCacheControl is the Cache-Control header value for immutable archive content.
+// Archive tiles, issuers, and checkpoints are content-addressed and never change.
+const immutableCacheControl = "public, max-age=31536000, immutable"
 
 // Server is the HTTP server for ct-archive-serve.
 type Server struct {
@@ -189,11 +203,14 @@ func (s *Server) handleCheckpoint(w http.ResponseWriter, r *http.Request, route 
 	defer func() { _ = rc.Close() }()
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", immutableCacheControl)
 	if r.Method == http.MethodHead {
 		return // HEAD: no body
 	}
 
-	if _, err := io.Copy(w, rc); err != nil {
+	bufp, _ := copyBufPool.Get().(*[]byte) //nolint:errcheck // pool New always returns *[]byte
+	defer copyBufPool.Put(bufp)
+	if _, err := io.CopyBuffer(w, rc, *bufp); err != nil {
 		if s.logger != nil {
 			s.logger.Error("Failed to write checkpoint response", "log", route.Log, "error", err)
 		}
@@ -230,11 +247,14 @@ func (s *Server) handleLogV3JSON(w http.ResponseWriter, r *http.Request, route R
 	defer func() { _ = rc.Close() }()
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", immutableCacheControl)
 	if r.Method == http.MethodHead {
 		return // HEAD: no body
 	}
 
-	if _, err := io.Copy(w, rc); err != nil {
+	bufp, _ := copyBufPool.Get().(*[]byte) //nolint:errcheck // pool New always returns *[]byte
+	defer copyBufPool.Put(bufp)
+	if _, err := io.CopyBuffer(w, rc, *bufp); err != nil {
 		if s.logger != nil {
 			s.logger.Error("Failed to write log.v3.json response", "log", route.Log, "error", err)
 		}
@@ -278,11 +298,14 @@ func (s *Server) handleHashTile(w http.ResponseWriter, r *http.Request, route Ro
 	defer func() { _ = rc.Close() }()
 
 	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Cache-Control", immutableCacheControl)
 	if r.Method == http.MethodHead {
 		return // HEAD: no body
 	}
 
-	if _, err := io.Copy(w, rc); err != nil {
+	bufp, _ := copyBufPool.Get().(*[]byte) //nolint:errcheck // pool New always returns *[]byte
+	defer copyBufPool.Put(bufp)
+	if _, err := io.CopyBuffer(w, rc, *bufp); err != nil {
 		if s.logger != nil {
 			s.logger.Error("Failed to write hash tile response", "log", route.Log, "level", route.TileLevel, "index", route.TileIndex, "error", err)
 		}
@@ -326,11 +349,14 @@ func (s *Server) handleDataTile(w http.ResponseWriter, r *http.Request, route Ro
 	defer func() { _ = rc.Close() }()
 
 	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Cache-Control", immutableCacheControl)
 	if r.Method == http.MethodHead {
 		return // HEAD: no body
 	}
 
-	if _, err := io.Copy(w, rc); err != nil {
+	bufp, _ := copyBufPool.Get().(*[]byte) //nolint:errcheck // pool New always returns *[]byte
+	defer copyBufPool.Put(bufp)
+	if _, err := io.CopyBuffer(w, rc, *bufp); err != nil {
 		if s.logger != nil {
 			s.logger.Error("Failed to write data tile response", "log", route.Log, "index", route.TileIndex, "error", err)
 		}
@@ -368,11 +394,14 @@ func (s *Server) handleIssuer(w http.ResponseWriter, r *http.Request, route Rout
 	defer func() { _ = rc.Close() }()
 
 	w.Header().Set("Content-Type", "application/pkix-cert")
+	w.Header().Set("Cache-Control", immutableCacheControl)
 	if r.Method == http.MethodHead {
 		return // HEAD: no body
 	}
 
-	if _, err := io.Copy(w, rc); err != nil {
+	bufp, _ := copyBufPool.Get().(*[]byte) //nolint:errcheck // pool New always returns *[]byte
+	defer copyBufPool.Put(bufp)
+	if _, err := io.CopyBuffer(w, rc, *bufp); err != nil {
 		if s.logger != nil {
 			s.logger.Error("Failed to write issuer response", "log", route.Log, "fingerprint", route.IssuerFingerprint, "error", err)
 		}
