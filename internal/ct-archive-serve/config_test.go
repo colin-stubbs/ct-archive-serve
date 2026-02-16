@@ -29,7 +29,7 @@ func TestParseConfig_Defaults(t *testing.T) {
 	if got, want := cfg.ArchiveRefreshInterval, 5*time.Minute; got != want {
 		t.Fatalf("ArchiveRefreshInterval = %v, want %v", got, want)
 	}
-	if got, want := cfg.ZipCacheMaxOpen, 256; got != want {
+	if got, want := cfg.ZipCacheMaxOpen, 2048; got != want {
 		t.Fatalf("ZipCacheMaxOpen = %d, want %d", got, want)
 	}
 	if got, want := cfg.ZipIntegrityFailTTL, 5*time.Minute; got != want {

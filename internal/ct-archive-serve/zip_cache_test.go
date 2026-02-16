@@ -125,47 +125,65 @@ func TestZipPartCache_LRUEviction(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	cache := NewZipPartCache(2, nil, 0) // Small cache for testing
+	// With 64 shards and maxOpen=64, each shard holds 1 entry (perShard=1).
+	// Inserting more than 64 distinct paths guarantees at least some shards
+	// receive 2+ entries (pigeonhole principle), triggering per-shard eviction.
+	cache := NewZipPartCache(64, nil, 0)
 
-	// Create 3 zip files
-	zip1 := filepath.Join(root, "000.zip")
-	zip2 := filepath.Join(root, "001.zip")
-	zip3 := filepath.Join(root, "002.zip")
-	mustCreateZip(t, zip1, map[string][]byte{"file1": []byte("data1")})
-	mustCreateZip(t, zip2, map[string][]byte{"file2": []byte("data2")})
-	mustCreateZip(t, zip3, map[string][]byte{"file3": []byte("data3")})
-
-	// Add zip1 and zip2 (cache at capacity)
-	_, err := cache.Get(zip1)
-	if err != nil {
-		t.Fatalf("Get(zip1) error = %v", err)
-	}
-	_, err = cache.Get(zip2)
-	if err != nil {
-		t.Fatalf("Get(zip2) error = %v", err)
+	const numFiles = 80
+	for i := 0; i < numFiles; i++ {
+		p := filepath.Join(root, fmt.Sprintf("%03d.zip", i))
+		mustCreateZip(t, p, map[string][]byte{
+			fmt.Sprintf("file%d", i): []byte(fmt.Sprintf("data%d", i)),
+		})
+		_, err := cache.Get(p)
+		if err != nil {
+			t.Fatalf("Get(%q) error = %v", p, err)
+		}
 	}
 
-	// Add zip3: should evict zip1 (LRU)
-	_, err = cache.Get(zip3)
-	if err != nil {
-		t.Fatalf("Get(zip3) error = %v", err)
+	// Per-shard capacity is 1, so each shard can hold at most 1 entry.
+	// Total capacity across all 64 shards is 64.
+	total := cache.totalOpen()
+	if total > 64 {
+		t.Errorf("totalOpen() = %d, want <= 64 (eviction should have occurred)", total)
+	}
+	// With 80 entries across 64 shards (pigeonhole), at least 16 evictions
+	// must have occurred, so total must be strictly less than 80.
+	if total >= numFiles {
+		t.Errorf("totalOpen() = %d, want < %d (some eviction expected)", total, numFiles)
+	}
+}
+
+func TestZipPartCache_ShardedEviction(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	// With maxOpen=64 and 64 shards, each shard holds 1 entry.
+	cache := NewZipPartCache(64, nil, 0)
+
+	// Create 65 zip files to exceed total capacity.
+	zipPaths := make([]string, 65)
+	for i := 0; i < 65; i++ {
+		p := filepath.Join(root, fmt.Sprintf("%03d.zip", i))
+		mustCreateZip(t, p, map[string][]byte{
+			fmt.Sprintf("file%d", i): []byte(fmt.Sprintf("data%d", i)),
+		})
+		zipPaths[i] = p
 	}
 
-	// zip1 should be evicted (cache miss)
-	cache.mu.Lock()
-	_, ok := cache.entries[zip1]
-	cache.mu.Unlock()
-	if ok {
-		t.Errorf("zip1 should have been evicted, but it's still in cache")
+	// Insert all 65 entries.
+	for _, p := range zipPaths {
+		_, err := cache.Get(p)
+		if err != nil {
+			t.Fatalf("Get(%q) error = %v", p, err)
+		}
 	}
 
-	// zip2 and zip3 should still be cached
-	cache.mu.Lock()
-	_, ok2 := cache.entries[zip2]
-	_, ok3 := cache.entries[zip3]
-	cache.mu.Unlock()
-	if !ok2 || !ok3 {
-		t.Errorf("zip2 or zip3 should still be cached, but zip2=%v zip3=%v", ok2, ok3)
+	// Verify total is at most 64 (at least one eviction occurred).
+	total := cache.totalOpen()
+	if total > 64 {
+		t.Errorf("totalOpen() = %d, want <= 64 (eviction should have occurred)", total)
 	}
 }
 
@@ -264,12 +282,71 @@ func TestZipPartCache_SingleflightDeduplication(t *testing.T) {
 		}
 	}
 
-	// Cache should contain exactly one entry.
-	cache.mu.Lock()
-	cacheLen := len(cache.entries)
-	cache.mu.Unlock()
-	if cacheLen != 1 {
-		t.Errorf("cache entries = %d, want 1", cacheLen)
+	// Cache should contain exactly one entry (the path resides in one shard).
+	total := cache.totalOpen()
+	if total != 1 {
+		t.Errorf("totalOpen() = %d, want 1", total)
+	}
+}
+
+func TestZipPartCache_ConcurrentMultiLogStress(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	cache := NewZipPartCache(256, nil, 0)
+
+	// Simulate 45 logs each with 3 zip parts (135 unique paths).
+	const numLogs = 45
+	const partsPerLog = 3
+	zipPaths := make([][]string, numLogs)
+
+	for i := 0; i < numLogs; i++ {
+		zipPaths[i] = make([]string, partsPerLog)
+		for j := 0; j < partsPerLog; j++ {
+			p := filepath.Join(root, fmt.Sprintf("log%02d_%03d.zip", i, j))
+			mustCreateZip(t, p, map[string][]byte{
+				fmt.Sprintf("entry_%d_%d", i, j): []byte("data"),
+			})
+			zipPaths[i][j] = p
+		}
+	}
+
+	// Launch 45 goroutines (one per log), each accessing its 3 parts in a loop.
+	var wg sync.WaitGroup
+	gate := make(chan struct{})
+	const iterations = 20
+
+	for i := 0; i < numLogs; i++ {
+		wg.Add(1)
+		go func(logIdx int) {
+			defer wg.Done()
+			<-gate
+			for iter := 0; iter < iterations; iter++ {
+				for _, p := range zipPaths[logIdx] {
+					entry, err := cache.Get(p)
+					if err != nil {
+						t.Errorf("log %d: Get(%q) error = %v", logIdx, p, err)
+						return
+					}
+					if entry == nil {
+						t.Errorf("log %d: Get(%q) returned nil", logIdx, p)
+						return
+					}
+				}
+			}
+		}(i)
+	}
+
+	close(gate)
+	wg.Wait()
+
+	// Verify cache is not empty and within bounds.
+	total := cache.totalOpen()
+	if total == 0 {
+		t.Error("totalOpen() = 0 after stress test, expected non-zero")
+	}
+	if total > 256 {
+		t.Errorf("totalOpen() = %d, exceeds maxOpen=256", total)
 	}
 }
 

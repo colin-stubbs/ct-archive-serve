@@ -1,3 +1,25 @@
+* 2026-02-16 - Fix CI lint stage: use official golangci-lint-action for v2 config compatibility
+
+- Replaced `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest` (which installs v1.x) with `golangci/golangci-lint-action@v7` (which supports golangci-lint v2 configs)
+- The v1 module path does not resolve to v2; the `.golangci.yml` uses `version: "2"` format with `formats:` map under `output`, which v1 cannot parse ("the format is required" error)
+
+* 2026-02-16 - Concurrent throughput overhaul: shard caches to eliminate lock contention
+
+- Refactored ZipPartCache into 64 internal shards (zipPartShard struct with own Mutex, LRU, entries map, singleflight group) to eliminate global lock contention under concurrent access
+- Refactored EntryContentCache into 64 internal shards (entryContentShard struct with own RWMutex, LRU, items map, per-shard memory budget) for the same reason
+- Fixed ZipIntegrityCache.Check() hot-path write-lock: added RLock guard so exclusive write-lock is only acquired when the path is actually in the failed map
+- Updated default ZipCacheMaxOpen from 256 to 2048 (config.go and zip_cache.go)
+- Updated default ZipCacheMaxConcurrentOpens from 8 to 64 (config.go and zip_cache.go)
+- Added TestZipPartCache_ShardedEviction test verifying per-shard capacity enforcement with 64 shards
+- Added TestZipPartCache_ConcurrentMultiLogStress test simulating 45 concurrent logs with 3 parts each
+- Updated TestZipPartCache_LRUEviction for sharded architecture (pigeonhole eviction verification)
+- Added comprehensive EntryContentCache test suite: GetPut, Disabled, PerShardBudget, Eviction, Invalidate, UpdateInPlace, ConcurrentAccess, NilReceiver
+- Added BenchmarkZipPartCache_ConcurrentContention benchmark (45 logs x 3 parts, RunParallel)
+- Added BenchmarkEntryContentCache_ConcurrentContention benchmark (500 entries, RunParallel)
+- Added BenchmarkZipPartCache_GetParallel_GOMAXPROCS scaling benchmark (1/4/16/64 goroutines)
+- Fixed syntax error in metrics.go (missing newline between SetEntryCacheBytes and SetEntryCacheItems)
+- Updated README.md with new default values and cache sharding documentation
+
 * 2026-01-30 - Comprehensive performance overhaul for zip file serving
 
 - Reordered ZipReader.OpenEntry to try entry content cache first, then zip part cache (skip os.Stat and integrity check on cache hits)
