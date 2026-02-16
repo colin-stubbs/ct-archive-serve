@@ -1,3 +1,8 @@
+* 2026-02-16 - Fix CI lint stage: use official golangci-lint-action for v2 config compatibility
+
+- Replaced `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest` (which installs v1.x) with `golangci/golangci-lint-action@v7` (which supports golangci-lint v2 configs)
+- The v1 module path does not resolve to v2; the `.golangci.yml` uses `version: "2"` format with `formats:` map under `output`, which v1 cannot parse ("the format is required" error)
+
 * 2026-02-16 - Concurrent throughput overhaul: shard caches to eliminate lock contention
 
 - Refactored ZipPartCache into 64 internal shards (zipPartShard struct with own Mutex, LRU, entries map, singleflight group) to eliminate global lock contention under concurrent access
