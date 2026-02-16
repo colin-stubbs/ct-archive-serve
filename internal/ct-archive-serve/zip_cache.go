@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"sync"
 	"time"
 
@@ -83,12 +84,19 @@ func (z *ZipIntegrityCache) Check(path string) error {
 	}
 	z.mu.RUnlock()
 
-	// Delete expired failure under write lock if needed.
-	z.mu.Lock()
-	if exp, ok := z.failed[path]; ok && !z.now().Before(exp) {
-		delete(z.failed, path)
+	// Delete expired failure under write lock -- only if the path is actually in
+	// the failed map (avoid taking an exclusive lock on the common hot path where
+	// the path is not in the failed map at all).
+	z.mu.RLock()
+	_, inFailed := z.failed[path]
+	z.mu.RUnlock()
+	if inFailed {
+		z.mu.Lock()
+		if exp, ok := z.failed[path]; ok && !z.now().Before(exp) {
+			delete(z.failed, path)
+		}
+		z.mu.Unlock()
 	}
-	z.mu.Unlock()
 
 	// Slow path: verify via singleflight to prevent thundering herd.
 	_, err, _ := z.group.Do(path, func() (interface{}, error) {
@@ -181,85 +189,120 @@ type ZipPartCacheEntry struct {
 	reader   *zip.ReadCloser
 	index    *ZipEntryIndex
 	lastUsed time.Time
-	element  *list.Element // back-pointer to LRU list position
+	element  *list.Element // back-pointer to LRU list position within its shard
 }
 
-// ZipPartCache is a bounded LRU cache for open zip file handles and entry indices.
+// defaultZipPartShards is the number of internal shards used to reduce lock contention
+// under high concurrency. With 64 shards and typical workloads of 45+ concurrent logs,
+// each goroutine almost always hits a distinct shard.
+const defaultZipPartShards = 64
+
+// zipPartShard is a single shard of the ZipPartCache. Each shard has its own mutex,
+// LRU list, entries map, and singleflight group, eliminating cross-shard lock contention.
+type zipPartShard struct {
+	mu      sync.Mutex
+	entries map[string]*ZipPartCacheEntry
+	lru     *list.List
+	group   singleflight.Group
+	maxOpen int
+}
+
+// ZipPartCache is a sharded, bounded LRU cache for open zip file handles and entry indices.
 //
 // This cache avoids repeated central-directory parsing for hot zip parts.
-// When the cache exceeds maxOpen, LRU entries are evicted.
+// The cache is internally sharded (default 64 shards) so that concurrent requests
+// for different zip paths do not contend on a single lock. Each shard has its own
+// mutex, LRU list, and singleflight group.
 //
-// LRU ordering uses a doubly-linked list for O(1) update/evict/remove operations.
-// A semaphore limits concurrent zip.OpenReader calls to prevent I/O storms.
+// A global semaphore limits concurrent zip.OpenReader calls to prevent I/O storms.
 type ZipPartCache struct {
-	maxOpen int
-	metrics *Metrics
-	now     func() time.Time
-
-	mu      sync.Mutex
-	entries map[string]*ZipPartCacheEntry // path -> entry
-	lru     *list.List                    // front = most recently used, back = least recently used
-
-	group   singleflight.Group     // deduplicates concurrent opens of the same path
-	openSem *semaphore.Weighted    // limits concurrent zip.OpenReader calls
+	metrics   *Metrics
+	now       func() time.Time
+	shards    []zipPartShard
+	numShards uint64
+	openSem   *semaphore.Weighted
 }
 
-// NewZipPartCache constructs a new ZipPartCache.
+// NewZipPartCache constructs a new sharded ZipPartCache.
 // maxConcurrentOpens controls the maximum number of concurrent zip.OpenReader calls
-// (defaults to 8 if <= 0).
+// (defaults to 64 if <= 0).
 func NewZipPartCache(maxOpen int, metrics *Metrics, maxConcurrentOpens int) *ZipPartCache {
 	if maxOpen <= 0 {
-		maxOpen = 256 // Default
+		maxOpen = 2048 // Default
 	}
 	if maxConcurrentOpens <= 0 {
-		maxConcurrentOpens = 8 // Default
+		maxConcurrentOpens = 64 // Default
 	}
+
+	numShards := uint64(defaultZipPartShards)
+	perShard := maxOpen / int(numShards)
+	if perShard < 1 {
+		perShard = 1
+	}
+
+	shards := make([]zipPartShard, numShards)
+	for i := range shards {
+		shards[i] = zipPartShard{
+			entries: make(map[string]*ZipPartCacheEntry),
+			lru:     list.New(),
+			maxOpen: perShard,
+		}
+	}
+
 	return &ZipPartCache{
-		maxOpen: maxOpen,
-		metrics: metrics,
-		now:     time.Now,
-		entries: make(map[string]*ZipPartCacheEntry),
-		lru:     list.New(),
-		openSem: semaphore.NewWeighted(int64(maxConcurrentOpens)),
+		metrics:   metrics,
+		now:       time.Now,
+		shards:    shards,
+		numShards: numShards,
+		openSem:   semaphore.NewWeighted(int64(maxConcurrentOpens)),
 	}
+}
+
+// shardFor returns the shard index for the given path using FNV-1a hashing.
+func (c *ZipPartCache) shardFor(path string) *zipPartShard {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(path)) // fnv hash.Write never returns an error
+	return &c.shards[h.Sum64()%c.numShards]
 }
 
 // Get returns a cached zip part entry, or opens and caches it if not present.
 // Returns the entry and nil error if found/cached, or nil and error on failure.
 //
-// The global mutex is only held for fast in-memory cache lookups and insertions.
+// Only the per-shard mutex is held for fast in-memory cache lookups and insertions.
 // All disk I/O (zip.OpenReader, central directory parsing) is performed outside
-// the mutex and deduplicated via singleflight so that concurrent requests for
-// the same uncached zip path only perform the I/O once. A semaphore limits
-// concurrent zip.OpenReader calls to prevent I/O storms during cold starts.
+// the mutex and deduplicated via per-shard singleflight so that concurrent requests
+// for the same uncached zip path only perform the I/O once. A global semaphore
+// limits concurrent zip.OpenReader calls to prevent I/O storms during cold starts.
 func (c *ZipPartCache) Get(path string) (*ZipPartCacheEntry, error) {
 	if c == nil {
 		return nil, errors.New("zip part cache not initialized")
 	}
 
-	// Fast path: check cache under lock -- O(1) map lookup + O(1) LRU move.
-	c.mu.Lock()
-	if entry, ok := c.entries[path]; ok {
-		c.lru.MoveToFront(entry.element)
+	shard := c.shardFor(path)
+
+	// Fast path: check cache under shard lock -- O(1) map lookup + O(1) LRU move.
+	shard.mu.Lock()
+	if entry, ok := shard.entries[path]; ok {
+		shard.lru.MoveToFront(entry.element)
 		entry.lastUsed = c.now()
-		c.mu.Unlock()
+		shard.mu.Unlock()
 		return entry, nil
 	}
-	c.mu.Unlock()
+	shard.mu.Unlock()
 
-	// Slow path: open and index the zip via singleflight (no global lock held).
-	val, err, _ := c.group.Do(path, func() (interface{}, error) {
+	// Slow path: open and index the zip via per-shard singleflight (no lock held).
+	val, err, _ := shard.group.Do(path, func() (interface{}, error) {
 		// Re-check cache inside singleflight (another goroutine may have completed).
-		c.mu.Lock()
-		if entry, ok := c.entries[path]; ok {
-			c.lru.MoveToFront(entry.element)
+		shard.mu.Lock()
+		if entry, ok := shard.entries[path]; ok {
+			shard.lru.MoveToFront(entry.element)
 			entry.lastUsed = c.now()
-			c.mu.Unlock()
+			shard.mu.Unlock()
 			return entry, nil
 		}
-		c.mu.Unlock()
+		shard.mu.Unlock()
 
-		// Acquire semaphore to limit concurrent zip.OpenReader calls.
+		// Acquire global semaphore to limit concurrent zip.OpenReader calls.
 		if err := c.openSem.Acquire(context.Background(), 1); err != nil {
 			return nil, fmt.Errorf("acquire open semaphore: %w", err)
 		}
@@ -287,30 +330,30 @@ func (c *ZipPartCache) Get(path string) (*ZipPartCacheEntry, error) {
 			lastUsed: c.now(),
 		}
 
-		// Insert into cache under lock.
-		c.mu.Lock()
+		// Insert into cache under shard lock.
+		shard.mu.Lock()
 		// Double-check: another caller may have inserted while we were opening.
-		if existing, ok := c.entries[path]; ok {
-			c.lru.MoveToFront(existing.element)
+		if existing, ok := shard.entries[path]; ok {
+			shard.lru.MoveToFront(existing.element)
 			existing.lastUsed = c.now()
-			c.mu.Unlock()
+			shard.mu.Unlock()
 			// Close the reader we just opened; the cached one wins.
 			_ = reader.Close()
 			return existing, nil
 		}
 
 		// Evict LRU if at capacity -- O(1).
-		if len(c.entries) >= c.maxOpen {
-			c.evictLRU()
+		if len(shard.entries) >= shard.maxOpen {
+			c.evictLRU(shard)
 		}
 
-		entry.element = c.lru.PushFront(path)
-		c.entries[path] = entry
+		entry.element = shard.lru.PushFront(path)
+		shard.entries[path] = entry
 
 		if c.metrics != nil {
-			c.metrics.SetZipCacheOpen(len(c.entries))
+			c.metrics.SetZipCacheOpen(c.totalOpen())
 		}
-		c.mu.Unlock()
+		shard.mu.Unlock()
 
 		return entry, nil
 	})
@@ -327,30 +370,30 @@ func (c *ZipPartCache) Get(path string) (*ZipPartCacheEntry, error) {
 	return entry, nil
 }
 
-// evictLRU removes the least recently used entry -- O(1).
-// Caller must hold c.mu.
-func (c *ZipPartCache) evictLRU() {
-	elem := c.lru.Back()
+// evictLRU removes the least recently used entry from the given shard -- O(1).
+// Caller must hold shard.mu.
+func (c *ZipPartCache) evictLRU(shard *zipPartShard) {
+	elem := shard.lru.Back()
 	if elem == nil {
 		return
 	}
 
-	c.lru.Remove(elem)
+	shard.lru.Remove(elem)
 
 	oldestPath, _ := elem.Value.(string) //nolint:errcheck // internal invariant: LRU list only contains string path values
-	entry, ok := c.entries[oldestPath]
+	entry, ok := shard.entries[oldestPath]
 	if !ok {
 		return
 	}
 
 	// Close resources
 	_ = entry.reader.Close()
-	delete(c.entries, oldestPath)
+	delete(shard.entries, oldestPath)
 
 	// Update metrics
 	if c.metrics != nil {
 		c.metrics.IncZipCacheEvictions()
-		c.metrics.SetZipCacheOpen(len(c.entries))
+		// Note: totalOpen() is called by the caller after eviction if needed.
 	}
 }
 
@@ -360,23 +403,37 @@ func (c *ZipPartCache) Remove(path string) {
 		return
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	shard := c.shardFor(path)
 
-	entry, ok := c.entries[path]
+	shard.mu.Lock()
+	defer shard.mu.Unlock()
+
+	entry, ok := shard.entries[path]
 	if !ok {
 		return
 	}
 
 	// Remove from LRU list -- O(1).
-	c.lru.Remove(entry.element)
+	shard.lru.Remove(entry.element)
 
 	// Close resources
 	_ = entry.reader.Close()
-	delete(c.entries, path)
+	delete(shard.entries, path)
 
 	// Update metrics
 	if c.metrics != nil {
-		c.metrics.SetZipCacheOpen(len(c.entries))
+		c.metrics.SetZipCacheOpen(c.totalOpen())
 	}
+}
+
+// totalOpen returns the total number of open entries across all shards.
+// Callers that need an exact count should hold all shard locks; callers that
+// only need a metric approximation (our case) can call this lock-free --
+// the slight race is acceptable for Prometheus gauge updates.
+func (c *ZipPartCache) totalOpen() int {
+	total := 0
+	for i := range c.shards {
+		total += len(c.shards[i].entries)
+	}
+	return total
 }

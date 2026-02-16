@@ -73,8 +73,8 @@ func parseConfigFromLookup(lookup envLookup) (Config, error) {
 		ArchiveFolderPattern: "ct_*",
 		LogListV3JSONRefreshInterval: 10 * time.Minute,
 		ArchiveRefreshInterval:     5 * time.Minute,
-		ZipCacheMaxOpen:            256,
-		ZipCacheMaxConcurrentOpens: 8,
+		ZipCacheMaxOpen:            2048,
+		ZipCacheMaxConcurrentOpens: 64,
 		ZipIntegrityFailTTL:        5 * time.Minute,
 		EntryContentCacheMaxBytes:  256 * 1024 * 1024, // 256 MiB default
 		HTTPReadHeaderTimeout:      5 * time.Second,
