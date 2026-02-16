@@ -1,3 +1,10 @@
+* 2026-02-16 - Bump Go to 1.25.7 to fix crypto/tls vulnerability GO-2026-4337
+
+- Updated go.mod from `go 1.25` to `go 1.25.7` to pick up the fix for GO-2026-4337 (unexpected session resumption in crypto/tls)
+- Updated Dockerfile base image from `golang:1.25.6-bookworm` to `golang:1.25.7-bookworm`
+- Updated CI workflow go-version from `1.25.5` to `1.25.7`
+- Updated Go version references across README.md, constitution.md, plan.md, .golangci.yml, and specify-rules.mdc to `1.25.7+`
+
 * 2026-02-16 - Fix CI lint stage: use official golangci-lint-action for v2 config compatibility
 
 - Replaced `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest` (which installs v1.x) with `golangci/golangci-lint-action@v7` (which supports golangci-lint v2 configs)

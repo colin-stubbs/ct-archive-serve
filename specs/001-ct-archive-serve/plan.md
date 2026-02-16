@@ -11,7 +11,7 @@ Implement `ct-archive-serve`, a native `net/http` server that serves Static-CT m
 
 ## Technical Context
 
-**Language/Version**: Go 1.25.6+  
+**Language/Version**: Go 1.25.7+  
 **Primary Dependencies**: Standard library + Prometheus client (`net/http`, `archive/zip`, `os`, `path/filepath`, `context`, `log/slog`, `github.com/prometheus/client_golang/prometheus/promhttp`) + `github.com/google/certificate-transparency-go/loglist3` (for `/logs.v3.json` validation per spec FR-006)  
 **Storage**: Local filesystem (read-only archives)  
 **Testing**: `go test ./...` (unit tests + integration tests using temp dirs and generated zip files)  

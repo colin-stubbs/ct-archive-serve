@@ -1,6 +1,6 @@
 ---
 # golangci-lint configuration for ct-archive-serve
-# Intended for Go 1.25.5+.
+# Intended for Go 1.25.7+.
 # Focus: Security, correctness, and maintainability
 
 version: "2"

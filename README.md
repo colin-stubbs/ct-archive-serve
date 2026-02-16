@@ -274,7 +274,7 @@ cmd/ct-archive-serve/        # CLI entrypoint
 internal/ct-archive-serve/   # Core implementation
 ```
 
-**Go Version**: Target runtime **Go 1.25.6+**
+**Go Version**: Target runtime **Go 1.25.7+**
 
 ### Local Tooling
 
