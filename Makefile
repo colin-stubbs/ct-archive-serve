@@ -40,10 +40,49 @@ force-test:
 lint:
 	golangci-lint run ./...
 
-security:
-	@command -v govulncheck >/dev/null 2>&1 && govulncheck ./... || echo "govulncheck not installed; skipping"
-	@command -v trivy >/dev/null 2>&1 && trivy fs --quiet . || echo "trivy not installed; skipping"
+# Security scanning
+security: security-trivy security-govulncheck
 
+security-trivy:
+	@echo "Running trivy security scan..."
+	@if command -v trivy >/dev/null 2>&1; then \
+		trivy fs --scanners vuln,misconfig,secret --skip-dirs docs/ .; \
+	else \
+		echo "trivy not found.;" \
+		exit 1; \
+	fi
+
+security-govulncheck:
+	@echo "Running govulncheck security scan..."
+	@if command -v govulncheck >/dev/null 2>&1; then \
+		govulncheck -show verbose ./...; \
+	else \
+		echo "govulncheck not found."; \
+		exit 1; \
+	fi
+
+# Code quality check (combines linting and security)
+quality: lint security
+	@echo "✅ Code quality check completed"
+
+# Install development tools
+install-tools:
+	@echo "🔧 Installing development tools..."
+	@if command -v brew >/dev/null 2>&1; then \
+		brew install hadolint trivy golangci-lint semgrep govulncheck; \
+	elif command -v apt-get >/dev/null 2>&1; then \
+		sudo apt-get update && sudo apt-get install -y hadolint trivy semgrep govulncheck; \
+		curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.10.1 \
+	else \
+		echo "⚠️  Package manager not supported, please install manually:"; \
+		echo "  - golangci-lint: https://github.com/golangci/golangci-lint"; \
+		echo "  - hadolint: https://github.com/hadolint/hadolint"; \
+		echo "  - trivy: https://github.com/aquasecurity/trivy"; \
+		echo "  - govulncheck: https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck"; \
+		echo "  - semgrep: https://semgrep.dev"; \
+	fi
+	@echo "✅ Tools installation completed"
+  
 build-ct-archive-serve:
 	@mkdir -p "$(BIN_DIR)"
 	go build -o "$(BIN_DIR)/ct-archive-serve" ./cmd/ct-archive-serve
