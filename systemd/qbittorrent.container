@@ -1,0 +1,44 @@
+# qbittorrent.container
+[Container]
+Image=docker.io/qbittorrentofficial/qbittorrent-nox:latest
+HostName=qbittorrent
+
+# if running as a podman unprivileged user it's likely best to ensure the contains runs as "0:0" aka "root:root", which will translate to the "UID:GID" of the user account actually running the container.
+#User="0:0"
+
+# auto-update the image from the registry
+AutoUpdate=registry
+
+# persistent qbittorrent configuration storage
+Volume=/home/nobody/etc/qbittorrent:/config
+# shared access to qbittorrent downloaded content
+Volume=/home/nobody/download:/downloads
+
+# adjust as required,
+Environment="TZ=Australia/Brisbane"
+Environment="QBT_LEGAL_NOTICE=confirm"
+Environment="QBT_TORRENTING_PORT=6881"
+Environment="QBT_WEBUI_PORT=8080"
+Environment="QBT_CONFIG_PATH=/config"
+Environment="QBT_DOWNLOADS_PATH=/downloads"
+
+# make prometheus webUI accessible via localhost; OR;
+PublishPort=127.0.0.1:9090:9090/tcp
+# make prometheus webUI accessible from anywhere
+#PublishPort=9090:9090/tcp
+
+# transport ports
+PublishPort=6881:6881/udp
+PublishPort=6881:6881/tcp
+
+# if you'd prefer to publish via traefik, do something like this:
+#Network=systemd-traefik
+#Label=traefik.enable=true
+#Label="traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.your.domain`)"
+#Label="traefik.http.services.qbittorrent.loadbalancer.server.port=8080"
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,33 @@
+# prometheus.container
+[Container]
+Image=docker.io/prom/prometheus:latest
+HostName=prometheus
+
+# if running as a podman unprivileged user it's likely best to ensure the contains runs as "0:0" aka "root:root", which will translate to the "UID:GID" of the user account actually running the container.
+User="0:0"
+
+Exec=--config.file=/etc/prometheus/prometheus.yml \
+  --storage.tsdb.path=/prometheus \
+  --storage.tsdb.retention.time=30d \
+  --storage.tsdb.wal-compression
+
+# auto-update image from registry
+AutoUpdate=registry
+
+# persistent data storage
+Volume=prometheus_data:/prometheus
+# read-only configuration files/target files
+Volume=/var/containers/etc/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+Volume=/var/containers/etc/prometheus/targets:/etc/prometheus/targets:ro
+
+# if you'd prefer to publish via traefik, do something like this:
+#Network=systemd-traefik
+#Label=traefik.enable=true
+#Label="traefik.http.routers.prometheus.rule=Host(`prometheus.your.tld`)"
+#Label="traefik.http.services.prometheus.loadbalancer.server.port=9090"
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
