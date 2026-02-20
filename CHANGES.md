@@ -1,3 +1,10 @@
+* 2026-02-20 - Add dev branch container image builds with "test" tag
+
+- Updated `.github/workflows/image.yml` to trigger on pushes to the `dev` branch in addition to `main`
+- Added conditional `test` tag via `docker/metadata-action` so dev branch builds produce `:test` tagged images
+- Main branch continues to produce `:latest` tagged images
+- Utilise environment variable in compose.yml to select image tag, defaults to latest
+
 * 2026-02-16 - Bump Go to 1.25.7 to fix crypto/tls vulnerability GO-2026-4337
 
 - Updated go.mod from `go 1.25` to `go 1.25.7` to pick up the fix for GO-2026-4337 (unexpected session resumption in crypto/tls)
